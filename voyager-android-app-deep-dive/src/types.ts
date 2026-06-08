@@ -66,15 +66,6 @@ export interface StickyNote {
   color: string;
 }
 
-export interface DatabaseState {
-  pages: Record<string, Page>;
-  currentPageId: string;
-  sidebarPageId: string | null;
-  recentPages: string[];
-  favorites: string[];
-  tags: Record<string, string[]>;
-}
-
 export interface AppSettings {
   theme: 'dark' | 'light' | 'system';
   accentColor: string;
@@ -115,3 +106,19 @@ export interface Plugin {
 }
 
 export type ActiveView = 'editor' | 'graph' | 'flashcards' | 'search' | 'settings' | 'allPages' | 'todos' | 'whiteboards';
+
+export interface WhiteboardElement {
+  id: string;
+  type: 'rect' | 'ellipse' | 'text' | 'arrow' | 'line' | 'sticky';
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  content?: string;
+  color: string;
+  strokeColor: string;
+  strokeWidth: number;
+  fontSize?: number;
+  rotation?: number;
+  points?: { x: number; y: number }[];
+}

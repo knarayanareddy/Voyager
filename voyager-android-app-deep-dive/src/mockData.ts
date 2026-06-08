@@ -31,9 +31,7 @@ function extractRefs(content: string): string[] {
   const refs: string[] = [];
   const wikiLinks = content.match(/\[\[([^\]]+)\]\]/g);
   if (wikiLinks) {
-    wikiLinks.forEach(link => {
-      refs.push(link.slice(2, -2));
-    });
+    wikiLinks.forEach(link => { refs.push(link.slice(2, -2)); });
   }
   const tags = content.match(/#(\w[\w-]*)/g);
   if (tags) {
@@ -48,77 +46,73 @@ function journalPage(daysAgo: number): Page {
   const displayDate = format(date, 'EEEE, MMMM do yyyy');
   const id = `journal-${dateStr}`;
 
-  const blocks: Block[] = daysAgo === 0
-    ? [
-        makeBlock(`## 🌅 Morning ${displayDate}`),
-        makeBlock('Started the day with a review of [[Project Voyager]] goals', [
-          makeBlock('Reading chapter 3 of [[Building a Second Brain]]', [
-            makeBlock('Key insight: **Progressive Summarization** is the technique of distilling notes over multiple passes'),
-          ]),
-          makeBlock('Reviewed flashcards — 12 cards due today #spaced-repetition'),
-        ]),
-        makeBlock('Daily intentions', [
-          makeBlock('Finish the [[Logseq Mobile]] outliner engine', [], 'DOING'),
-          makeBlock('Write documentation for the [[Knowledge Graph]] feature', [], 'TODO'),
-          makeBlock('Review pull requests for #voyager', [], 'TODO'),
-          makeBlock('Exercise — 30 min run', [], 'DONE'),
-          makeBlock('Morning meditation', [], 'DONE'),
-        ]),
-        makeBlock('## 🌞 Afternoon'),
-        makeBlock('Deep work session on [[React]] component architecture', [
-          makeBlock('Refactored the block renderer to handle infinite nesting efficiently'),
-          makeBlock('Added `#card` support for spaced repetition extraction'),
-          makeBlock('Implemented [[Bi-directional Links]] parser with regex'),
-        ]),
-        makeBlock('## 💡 Ideas & Insights'),
-        makeBlock('The outliner paradigm works because it mirrors how we actually think — hierarchically, not linearly', [
-          makeBlock('Reference: [[Andy Matuschak]] notes on evergreen notes'),
-          makeBlock('Counter-point: Some knowledge is inherently non-hierarchical → use [[Knowledge Graph]]'),
-        ]),
-        makeBlock('## 📷 Media captured today', [
-          makeBlock('Workspace photo attached below #workspace #setup'),
-          makeBlock('Screenshot of the graph view showing 48 connected pages'),
-        ]),
-        makeBlock('## 🎯 Evening Review'),
-        makeBlock('What went well?', [
-          makeBlock('Made significant progress on the outliner #win'),
-          makeBlock('Maintained focus for 3 consecutive hours using Pomodoro'),
-        ]),
-        makeBlock('What to improve?', [
-          makeBlock('Start documentation earlier in the day #improvement'),
-        ]),
-        makeBlock('Gratitude: Grateful for the focus and clarity today 🙏'),
-      ]
-    : daysAgo === 1
-    ? [
-        makeBlock(`## 📅 ${displayDate}`),
-        makeBlock('Reviewed [[Project Voyager]] architecture', [
-          makeBlock('Decided to use force-directed graph for [[Knowledge Graph]]'),
-          makeBlock('Chose SM-2 algorithm for [[Flashcards]] spaced repetition'),
-        ]),
-        makeBlock('Tasks', [
-          makeBlock('Setup Vite + React + Tailwind project structure', [], 'DONE'),
-          makeBlock('Define TypeScript interfaces in types.ts', [], 'DONE'),
-          makeBlock('Create mock data for journals and pages', [], 'DONE'),
-          makeBlock('Research [[S-Pen]] integration approaches', [], 'DONE'),
-        ]),
-        makeBlock('Met with team about [[Samsung S23 Ultra]] hardware simulation', [
-          makeBlock('Agreed on pixel-perfect bezel rendering approach'),
-          makeBlock('Volume HUD overlay should match One UI 5.1 design language'),
-        ]),
-      ]
-    : [
-        makeBlock(`## 📅 ${displayDate}`),
-        makeBlock('Planning session for the week', [
-          makeBlock('[[Project Voyager]] milestone review'),
-          makeBlock('Research [[Logseq]] feature parity checklist'),
-        ]),
-        makeBlock('Reading notes from [[Building a Second Brain]]', [
-          makeBlock('**PARA Method**: Projects, Areas, Resources, Archives'),
-          makeBlock('**CODE**: Capture, Organize, Distill, Express'),
-        ]),
-        makeBlock('Linked to [[Zettlekasten Method]] for comparison #zettelkasten #pkm'),
-      ];
+  const blocks: Block[] = daysAgo === 0 ? [
+    makeBlock(`## 🌅 ${displayDate}`),
+    makeBlock('Started the day with a review of [[Project Voyager]] goals', [
+      makeBlock('Reading chapter 3 of [[Building a Second Brain]]', [
+        makeBlock('Key insight: **Progressive Summarization** is the technique of distilling notes over multiple passes'),
+      ]),
+      makeBlock('Reviewed flashcards — 12 cards due today #spaced-repetition'),
+    ]),
+    makeBlock('Daily intentions', [
+      makeBlock('Finish the [[Logseq Mobile]] outliner engine', [], 'DOING'),
+      makeBlock('Write documentation for the [[Knowledge Graph]] feature', [], 'TODO'),
+      makeBlock('Review pull requests for #voyager', [], 'TODO'),
+      makeBlock('Exercise — 30 min run', [], 'DONE'),
+      makeBlock('Morning meditation', [], 'DONE'),
+    ]),
+    makeBlock('## 🌞 Afternoon'),
+    makeBlock('Deep work session on [[React]] component architecture', [
+      makeBlock('Refactored the block renderer to handle infinite nesting efficiently'),
+      makeBlock('Added `#card` support for spaced repetition extraction'),
+      makeBlock('Implemented [[Bi-directional Links]] parser with regex'),
+    ]),
+    makeBlock('## 💡 Ideas & Insights'),
+    makeBlock('The outliner paradigm works because it mirrors how we actually think — hierarchically, not linearly', [
+      makeBlock('Reference: [[Andy Matuschak]] notes on evergreen notes'),
+      makeBlock('Counter-point: Some knowledge is inherently non-hierarchical → use [[Knowledge Graph]]'),
+    ]),
+    makeBlock('## 📷 Media captured today', [
+      makeBlock('Workspace photo attached below #workspace #setup'),
+      makeBlock('Screenshot of the graph view showing 48 connected pages'),
+    ]),
+    makeBlock('## 🎯 Evening Review'),
+    makeBlock('What went well?', [
+      makeBlock('Made significant progress on the outliner #win'),
+      makeBlock('Maintained focus for 3 consecutive hours using Pomodoro'),
+    ]),
+    makeBlock('What to improve?', [
+      makeBlock('Start documentation earlier in the day #improvement'),
+    ]),
+    makeBlock('Gratitude: Grateful for the focus and clarity today 🙏'),
+  ] : daysAgo === 1 ? [
+    makeBlock(`## 📅 ${displayDate}`),
+    makeBlock('Reviewed [[Project Voyager]] architecture', [
+      makeBlock('Decided to use force-directed graph for [[Knowledge Graph]]'),
+      makeBlock('Chose SM-2 algorithm for [[Flashcards]] spaced repetition'),
+    ]),
+    makeBlock('Tasks', [
+      makeBlock('Setup Vite + React + Tailwind project structure', [], 'DONE'),
+      makeBlock('Define TypeScript interfaces in types.ts', [], 'DONE'),
+      makeBlock('Create mock data for journals and pages', [], 'DONE'),
+      makeBlock('Research [[S-Pen]] integration approaches', [], 'DONE'),
+    ]),
+    makeBlock('Met with team about [[Samsung S23 Ultra]] hardware simulation', [
+      makeBlock('Agreed on pixel-perfect bezel rendering approach'),
+      makeBlock('Volume HUD overlay should match One UI 5.1 design language'),
+    ]),
+  ] : [
+    makeBlock(`## 📅 ${displayDate}`),
+    makeBlock('Planning session for the week', [
+      makeBlock('[[Project Voyager]] milestone review'),
+      makeBlock('Research [[Logseq]] feature parity checklist'),
+    ]),
+    makeBlock('Reading notes from [[Building a Second Brain]]', [
+      makeBlock('**PARA Method**: Projects, Areas, Resources, Archives'),
+      makeBlock('**CODE**: Capture, Organize, Distill, Express'),
+    ]),
+    makeBlock('Linked to [[Zettlekasten Method]] for comparison #zettelkasten #pkm'),
+  ];
 
   return {
     id,
@@ -141,7 +135,7 @@ const logseqGuidePage: Page = {
   properties: { icon: '📖' },
   tags: ['guide', 'documentation'],
   blocks: [
-    makeBlock('# Welcome to Logseq Mobile 📱', [
+    makeBlock('# Welcome to Voyager — Logseq Mobile 📱', [
       makeBlock('This is a full-featured **local-first** knowledge base inspired by [[Logseq]]'),
       makeBlock('All your data stays on device — no account required, no cloud dependency'),
     ]),
@@ -154,7 +148,7 @@ const logseqGuidePage: Page = {
     makeBlock('### 🔗 Bi-directional Links', [
       makeBlock('Use `[[Page Name]]` to create a **wiki link** to any page', [
         makeBlock('Example: [[Project Voyager]] — clicking navigates to that page'),
-        makeBlock('If the page doesn\'t exist, it\'s created automatically'),
+        makeBlock("If the page doesn't exist, it's created automatically"),
       ]),
       makeBlock('Use `#tag` for hashtag references — e.g. `#productivity` #productivity'),
       makeBlock('All links are **bi-directional** — backlinks appear at the bottom of every page'),
@@ -195,7 +189,6 @@ const logseqGuidePage: Page = {
       makeBlock('`[[` — Start a page link'),
       makeBlock('`Ctrl+Z` — Undo'),
       makeBlock('`Ctrl+Shift+F` — Global search'),
-      makeBlock('`Ctrl+K` — Quick page switcher'),
     ]),
     makeBlock('## Slash Commands `/`', [
       makeBlock('`/TODO` — Insert TODO task'),
@@ -204,8 +197,6 @@ const logseqGuidePage: Page = {
       makeBlock('`/code` — Insert code block'),
       makeBlock('`/quote` — Insert blockquote'),
       makeBlock('`/card` — Mark as flashcard'),
-      makeBlock('`/table` — Insert a table'),
-      makeBlock('`/embed` — Embed a page'),
     ]),
     makeBlock('## Markdown Support', [
       makeBlock('**Bold** — `**text**`'),
@@ -213,8 +204,6 @@ const logseqGuidePage: Page = {
       makeBlock('~~Strikethrough~~ — `~~text~~`'),
       makeBlock('`Inline code` — `` `code` ``'),
       makeBlock('> Blockquote — `> text`'),
-      makeBlock('```\nCode block\n``` — triple backticks'),
-      makeBlock('- [ ] Checkbox list'),
       makeBlock('==Highlight== — `==text==`'),
     ]),
   ],
@@ -261,8 +250,8 @@ const projectVoyagerPage: Page = {
       makeBlock('Camera integration (webcam + file upload)', [], 'DONE'),
       makeBlock('S-Pen drawing canvas + OCR simulation', [], 'DONE'),
       makeBlock('Dark/Light/System theme support', [], 'DONE'),
+      makeBlock('Whiteboard / Excalidraw-style canvas', [], 'DOING'),
       makeBlock('Page templates', [], 'DOING'),
-      makeBlock('Whiteboard / Excalidraw-style canvas', [], 'TODO'),
       makeBlock('Plugin API system', [], 'LATER'),
       makeBlock('PDF annotation', [], 'LATER'),
       makeBlock('Org-mode parser', [], 'TODO'),
@@ -414,11 +403,10 @@ const buildingSecondBrainPage: Page = {
     ]),
     makeBlock('## Key Insights', [
       makeBlock('Information has value when **in motion**, not at rest', [
-        makeBlock('Don\'t organize for the sake of organizing — do it to express'),
+        makeBlock("Don't organize for the sake of organizing — do it to express"),
       ]),
       makeBlock('Your brain is for **having ideas**, not holding them'),
       makeBlock('A second brain makes you a better **thinker**, not just a better archivist'),
-      makeBlock('12 favourite problems you\'re always thinking about → filter new info through these'),
     ]),
     makeBlock('## Related', [
       makeBlock('[[Zettlekasten Method]] — Niklas Luhmann\'s card index system'),
@@ -484,7 +472,6 @@ const flashcardsPage: Page = {
         makeBlock('The block becomes the **front** (question)'),
         makeBlock('Child blocks become the **back** (answer)'),
       ]),
-      makeBlock('Example card below ↓'),
     ]),
     makeBlock('What is the [[Zettlekasten Method]]? #card', [
       makeBlock('A note-taking system developed by Niklas Luhmann'),
@@ -546,7 +533,6 @@ const reactPage: Page = {
       makeBlock('**Context + Reducer** for global state (database, settings)'),
       makeBlock('**Custom Hooks** for encapsulating complex logic'),
       makeBlock('**Memoization** (useMemo, useCallback) for graph performance'),
-      makeBlock('**Portals** for modal overlays'),
       makeBlock('**Refs** for DOM access (canvas, video, scroll)'),
     ]),
   ],
@@ -605,33 +591,16 @@ const templatePage: Page = {
       makeBlock('template:: meeting-notes'),
       makeBlock('**Date**: [[{{date}}]]'),
       makeBlock('**Attendees**: '),
-      makeBlock('**Agenda**:', [
-        makeBlock('Item 1'),
-        makeBlock('Item 2'),
-      ]),
-      makeBlock('**Notes**:', [
-        makeBlock('Key point 1'),
-        makeBlock('Key point 2'),
-      ]),
-      makeBlock('**Action Items**:', [
-        makeBlock('Action 1', [], 'TODO'),
-        makeBlock('Action 2', [], 'TODO'),
-      ]),
+      makeBlock('**Agenda**:', [makeBlock('Item 1'), makeBlock('Item 2')]),
+      makeBlock('**Notes**:', [makeBlock('Key point 1'), makeBlock('Key point 2')]),
+      makeBlock('**Action Items**:', [makeBlock('Action 1', [], 'TODO'), makeBlock('Action 2', [], 'TODO')]),
     ]),
     makeBlock('## Daily Review Template', [
       makeBlock('template:: daily-review'),
-      makeBlock('**What did I accomplish today?**', [
-        makeBlock(''),
-      ]),
-      makeBlock('**What should I do tomorrow?**', [
-        makeBlock('', [], 'TODO'),
-      ]),
-      makeBlock('**What am I grateful for?**', [
-        makeBlock(''),
-      ]),
-      makeBlock('**One insight from today**:', [
-        makeBlock(''),
-      ]),
+      makeBlock('**What did I accomplish today?**', [makeBlock('')]),
+      makeBlock('**What should I do tomorrow?**', [makeBlock('', [], 'TODO')]),
+      makeBlock('**What am I grateful for?**', [makeBlock('')]),
+      makeBlock('**One insight from today**:', [makeBlock('')]),
     ]),
     makeBlock('## Book Notes Template', [
       makeBlock('template:: book-notes'),
@@ -639,13 +608,39 @@ const templatePage: Page = {
       makeBlock('**Published**: '),
       makeBlock('**My Rating**: ⭐⭐⭐⭐⭐'),
       makeBlock('**Summary**: '),
-      makeBlock('**Key Ideas**:', [
-        makeBlock('Idea 1'),
-      ]),
-      makeBlock('**Quotes**:', [
-        makeBlock('> '),
-      ]),
+      makeBlock('**Key Ideas**:', [makeBlock('Idea 1')]),
+      makeBlock('**Quotes**:', [makeBlock('> ')]),
       makeBlock('**Actions to take**: ', [], 'TODO'),
+    ]),
+  ],
+};
+
+const andyMatuschakPage: Page = {
+  id: 'andy-matuschak',
+  name: 'Andy Matuschak',
+  isJournal: false,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+  properties: { icon: '🌱', type: 'person' },
+  tags: ['pkm', 'notes', 'research'],
+  blocks: [
+    makeBlock('# 🌱 Andy Matuschak', [
+      makeBlock('Researcher, engineer, and designer working on tools for thought'),
+      makeBlock('Former Apple engineer, Khan Academy VP of Product'),
+    ]),
+    makeBlock('## Key Concepts', [
+      makeBlock('**Evergreen Notes** — Notes that accumulate and evolve over time', [
+        makeBlock('Should be atomic — one concept per note'),
+        makeBlock('Should be densely linked'),
+        makeBlock('Should be in your own words'),
+      ]),
+      makeBlock('**Spaced Repetition** — Scientifically optimal review scheduling'),
+      makeBlock('**Executable Books** — Books you can interact with and execute code within'),
+    ]),
+    makeBlock('## Related to [[Project Voyager]]', [
+      makeBlock('[[Flashcards]] system inspired by his SRS research'),
+      makeBlock('[[Knowledge Graph]] visual inspired by evergreen note linking'),
+      makeBlock('[[Bi-directional Links]] inspired by his note-taking philosophy'),
     ]),
   ],
 };
@@ -654,11 +649,16 @@ export function buildInitialDatabase(): Record<string, Page> {
   const today = journalPage(0);
   const yesterday = journalPage(1);
   const twoDaysAgo = journalPage(2);
+  const threeDaysAgo = journalPage(3);
 
   const pages: Record<string, Page> = {};
-  [today, yesterday, twoDaysAgo, logseqGuidePage, projectVoyagerPage, knowledgeGraphPage,
-   samsungS23Page, buildingSecondBrainPage, zettlekastenPage, flashcardsPage,
-   reactPage, todosPage, templatePage].forEach(p => { pages[p.id] = p; });
+
+  [
+    today, yesterday, twoDaysAgo, threeDaysAgo,
+    logseqGuidePage, projectVoyagerPage, knowledgeGraphPage,
+    samsungS23Page, buildingSecondBrainPage, zettlekastenPage,
+    flashcardsPage, reactPage, todosPage, templatePage, andyMatuschakPage,
+  ].forEach(p => { pages[p.id] = p; });
 
   return pages;
 }
