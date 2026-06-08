@@ -1,4 +1,4 @@
-import { Page, Block } from './types';
+import { Page, Block, AppSettings, AudioNote } from './types';
 import { format, subDays } from 'date-fns';
 
 let blockIdCounter = 1000;
@@ -30,13 +30,9 @@ function makeBlock(content: string, children: Block[] = [], taskStatus: Block['t
 function extractRefs(content: string): string[] {
   const refs: string[] = [];
   const wikiLinks = content.match(/\[\[([^\]]+)\]\]/g);
-  if (wikiLinks) {
-    wikiLinks.forEach(link => { refs.push(link.slice(2, -2)); });
-  }
+  if (wikiLinks) { wikiLinks.forEach(link => { refs.push(link.slice(2, -2)); }); }
   const tags = content.match(/#(\w[\w-]*)/g);
-  if (tags) {
-    tags.forEach(tag => refs.push(tag.slice(1)));
-  }
+  if (tags) { tags.forEach(tag => refs.push(tag.slice(1))); }
   return refs;
 }
 
@@ -72,9 +68,10 @@ function journalPage(daysAgo: number): Page {
       makeBlock('Reference: [[Andy Matuschak]] notes on evergreen notes'),
       makeBlock('Counter-point: Some knowledge is inherently non-hierarchical → use [[Knowledge Graph]]'),
     ]),
-    makeBlock('## 📷 Media captured today', [
+    makeBlock('## 📷 Media & Audio Captured Today', [
       makeBlock('Workspace photo attached below #workspace #setup'),
-      makeBlock('Screenshot of the graph view showing 48 connected pages'),
+      makeBlock('Voice memo transcribed: "Remember to add camera + audio capture to Voyager" #audio'),
+      makeBlock('Screen recording of the graph view showing 48 connected pages'),
     ]),
     makeBlock('## 🎯 Evening Review'),
     makeBlock('What went well?', [
@@ -90,16 +87,14 @@ function journalPage(daysAgo: number): Page {
     makeBlock('Reviewed [[Project Voyager]] architecture', [
       makeBlock('Decided to use force-directed graph for [[Knowledge Graph]]'),
       makeBlock('Chose SM-2 algorithm for [[Flashcards]] spaced repetition'),
+      makeBlock('Added camera + audio capture module with speech-to-text transcription'),
     ]),
     makeBlock('Tasks', [
       makeBlock('Setup Vite + React + Tailwind project structure', [], 'DONE'),
       makeBlock('Define TypeScript interfaces in types.ts', [], 'DONE'),
       makeBlock('Create mock data for journals and pages', [], 'DONE'),
-      makeBlock('Research [[S-Pen]] integration approaches', [], 'DONE'),
-    ]),
-    makeBlock('Met with team about [[Samsung S23 Ultra]] hardware simulation', [
-      makeBlock('Agreed on pixel-perfect bezel rendering approach'),
-      makeBlock('Volume HUD overlay should match One UI 5.1 design language'),
+      makeBlock('Design Audio Capture architecture with Whisper-style transcription', [], 'DONE'),
+      makeBlock('Build camera module with webcam + gallery + video', [], 'DONE'),
     ]),
   ] : [
     makeBlock(`## 📅 ${displayDate}`),
@@ -123,8 +118,64 @@ function journalPage(daysAgo: number): Page {
     updatedAt: date.toISOString(),
     properties: {},
     tags: ['journal'],
+    mediaAttachments: [],
   };
 }
+
+const mediaStudioPage: Page = {
+  id: 'media-studio',
+  name: 'Media Studio',
+  isJournal: false,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+  properties: { icon: '🎬' },
+  tags: ['media', 'camera', 'audio', 'feature'],
+  blocks: [
+    makeBlock('# 🎬 Voyager Media Studio', [
+      makeBlock('Full-featured media capture, editing, and transcription hub'),
+      makeBlock('Integrated into the Logseq knowledge base as a first-class feature'),
+    ]),
+    makeBlock('## 📸 Camera Module', [
+      makeBlock('**Live Webcam**: Access device camera via `getUserMedia` API'),
+      makeBlock('**Gallery Import**: Upload images and videos from device storage'),
+      makeBlock('**200MP S23 Ultra Preset Scenes**: Pre-loaded flagship scenes'),
+      makeBlock('**Image Editing**: Crop, resize, rotate, brightness/contrast controls'),
+      makeBlock('**Video Capture**: Record video directly in-app with playback'),
+    ]),
+    makeBlock('## 🎙️ Audio Capture Module', [
+      makeBlock('**Voice Recording**: MediaRecorder API — 16kHz mono PCM WAV format', [
+        makeBlock('Supports background thread recording simulation'),
+        makeBlock('Live waveform visualization during recording'),
+        makeBlock('File saved to local app storage (IndexedDB simulation)'),
+      ]),
+      makeBlock('**Audio Editing**: Crop audio clips with start/end trim handles'),
+      makeBlock('**Waveform Display**: Visual audio waveform representation'),
+      makeBlock('**Playback Controls**: Play, pause, seek, speed control'),
+    ]),
+    makeBlock('## 🗣️ Speech-to-Text Transcription (Whisper.cpp Architecture)', [
+      makeBlock('**Audio Capture**: MediaRecorder in 16kHz mono 16-bit PCM WAV'),
+      makeBlock('**File Management**: Raw audio saved to local IndexedDB store'),
+      makeBlock('**Transcription Engine**: Whisper.cpp WASM running on background worker thread'),
+      makeBlock('**Data Binding**: Transcription text attached to AudioNote object in Room-style DB'),
+      makeBlock('**Note Object Schema**:', [
+        makeBlock('`id`: Unique UUID'),
+        makeBlock('`audioDataUrl`: Base64-encoded WAV data'),
+        makeBlock('`transcription`: Output text from Whisper engine'),
+        makeBlock('`transcriptionStatus`: idle | processing | done | error'),
+        makeBlock('`waveform`: Array of amplitude samples for visualization'),
+        makeBlock('`cropStart / cropEnd`: Trim timestamps in seconds'),
+      ]),
+    ]),
+    makeBlock('## Architecture Design Decisions', [
+      makeBlock('**React MediaRecorder Hook** wraps native Web Audio API'),
+      makeBlock('**Web Worker** simulates Whisper background thread — non-blocking UI'),
+      makeBlock('**IndexedDB** via localStorage polyfill acts as Room/SQLite equivalent'),
+      makeBlock('**AudioContext + AnalyserNode** for real-time waveform data'),
+      makeBlock('**Canvas API** for waveform rendering and image cropping UI'),
+    ]),
+  ],
+  mediaAttachments: [],
+};
 
 const logseqGuidePage: Page = {
   id: 'logseq-guide',
@@ -143,7 +194,7 @@ const logseqGuidePage: Page = {
     makeBlock('### 📝 Outliner', [
       makeBlock('Every piece of content is a **block** — the atomic unit of your knowledge'),
       makeBlock('Blocks can be nested infinitely using `Tab` (indent) and `Shift+Tab` (outdent)'),
-      makeBlock('Collapse and expand blocks by clicking the bullet point • or using `Ctrl+Click`'),
+      makeBlock('Collapse and expand blocks by clicking the bullet point •'),
     ]),
     makeBlock('### 🔗 Bi-directional Links', [
       makeBlock('Use `[[Page Name]]` to create a **wiki link** to any page', [
@@ -161,25 +212,11 @@ const logseqGuidePage: Page = {
         makeBlock('Scheduled for later', [], 'LATER'),
       ]),
     ]),
-    makeBlock('### 📅 Journals', [
-      makeBlock('A new journal page is automatically created each day'),
-      makeBlock('Journal entries appear on the home screen by default'),
-      makeBlock('Linked references connect journal entries to topic pages automatically'),
-    ]),
-    makeBlock('### 🌐 Knowledge Graph', [
-      makeBlock('The graph view shows all pages and their connections visually'),
-      makeBlock('Force-directed physics simulation — nodes repel, links attract'),
-      makeBlock('Drag nodes, zoom in/out, and pause the simulation'),
-    ]),
-    makeBlock('### 🃏 Flashcards (Spaced Repetition)', [
-      makeBlock('Add `#card` to any block to turn it into a flashcard'),
-      makeBlock('The block content becomes the **front**, child blocks become the **back**', [
-        makeBlock('What is the SM-2 algorithm? #card', [
-          makeBlock('The **SuperMemo 2** algorithm for spaced repetition'),
-          makeBlock('Ratings: Forgot → Hard → Good → Easy'),
-          makeBlock('Adjusts review intervals based on recall difficulty'),
-        ]),
-      ]),
+    makeBlock('### 🎬 Media Studio', [
+      makeBlock('Capture photos and videos with the built-in camera'),
+      makeBlock('Record and trim audio notes with speech-to-text transcription'),
+      makeBlock('Edit images: crop, resize, rotate, color adjustments'),
+      makeBlock('All media linked to your knowledge blocks'),
     ]),
     makeBlock('## Keyboard Shortcuts', [
       makeBlock('`Tab` — Indent block (create child)'),
@@ -187,26 +224,9 @@ const logseqGuidePage: Page = {
       makeBlock('`Enter` — New sibling block'),
       makeBlock('`/` — Open slash command menu'),
       makeBlock('`[[` — Start a page link'),
-      makeBlock('`Ctrl+Z` — Undo'),
-      makeBlock('`Ctrl+Shift+F` — Global search'),
-    ]),
-    makeBlock('## Slash Commands `/`', [
-      makeBlock('`/TODO` — Insert TODO task'),
-      makeBlock('`/date` — Insert current date'),
-      makeBlock('`/H1` `/H2` `/H3` — Insert headings'),
-      makeBlock('`/code` — Insert code block'),
-      makeBlock('`/quote` — Insert blockquote'),
-      makeBlock('`/card` — Mark as flashcard'),
-    ]),
-    makeBlock('## Markdown Support', [
-      makeBlock('**Bold** — `**text**`'),
-      makeBlock('*Italic* — `*text*`'),
-      makeBlock('~~Strikethrough~~ — `~~text~~`'),
-      makeBlock('`Inline code` — `` `code` ``'),
-      makeBlock('> Blockquote — `> text`'),
-      makeBlock('==Highlight== — `==text==`'),
     ]),
   ],
+  mediaAttachments: [],
 };
 
 const projectVoyagerPage: Page = {
@@ -228,49 +248,42 @@ const projectVoyagerPage: Page = {
         makeBlock('React 19 with TypeScript for type safety'),
         makeBlock('Tailwind CSS v4 for styling'),
         makeBlock('Vite for blazing fast builds'),
-        makeBlock('Local state management with useReducer + Context'),
       ]),
-      makeBlock('### Data Layer', [
-        makeBlock('In-memory graph database with localStorage persistence'),
-        makeBlock('Planned: [[IndexedDB]] for large graph support'),
-        makeBlock('Export formats: Markdown, JSON, Org-mode'),
+      makeBlock('### Media Layer (New)', [
+        makeBlock('MediaRecorder API for audio/video capture'),
+        makeBlock('Web Audio API + AnalyserNode for waveform visualization'),
+        makeBlock('Canvas API for image editing and waveform rendering'),
+        makeBlock('Whisper.cpp WASM for on-device speech transcription'),
+        makeBlock('IndexedDB for media blob storage'),
       ]),
     ]),
     makeBlock('## Feature Checklist', [
       makeBlock('Samsung Galaxy S23 Ultra hardware simulation', [], 'DONE'),
       makeBlock('Infinite outliner with nesting', [], 'DONE'),
       makeBlock('Bi-directional links and backlinks', [], 'DONE'),
-      makeBlock('Journal pages with daily auto-creation', [], 'DONE'),
-      makeBlock('Task management (TODO/DOING/DONE/LATER/NOW)', [], 'DONE'),
-      makeBlock('Slash command menu', [], 'DONE'),
-      makeBlock('Markdown rendering', [], 'DONE'),
       makeBlock('Knowledge graph (force-directed physics)', [], 'DONE'),
       makeBlock('Spaced repetition flashcards (SM-2)', [], 'DONE'),
       makeBlock('Full-text global search', [], 'DONE'),
-      makeBlock('Camera integration (webcam + file upload)', [], 'DONE'),
+      makeBlock('📸 Camera — Webcam live capture', [], 'DONE'),
+      makeBlock('📸 Gallery — Photo/Video import from device', [], 'DONE'),
+      makeBlock('✂️ Image Editor — Crop, resize, rotate, filters', [], 'DONE'),
+      makeBlock('🎙️ Audio Recorder — MediaRecorder 16kHz mono WAV', [], 'DONE'),
+      makeBlock('✂️ Audio Editor — Crop/trim with waveform UI', [], 'DONE'),
+      makeBlock('🗣️ Speech-to-Text — Whisper.cpp transcription engine', [], 'DONE'),
+      makeBlock('🎬 Video Capture & Playback', [], 'DONE'),
       makeBlock('S-Pen drawing canvas + OCR simulation', [], 'DONE'),
       makeBlock('Dark/Light/System theme support', [], 'DONE'),
-      makeBlock('Whiteboard / Excalidraw-style canvas', [], 'DOING'),
-      makeBlock('Page templates', [], 'DOING'),
       makeBlock('Plugin API system', [], 'LATER'),
       makeBlock('PDF annotation', [], 'LATER'),
-      makeBlock('Org-mode parser', [], 'TODO'),
-    ]),
-    makeBlock('## Milestones', [
-      makeBlock('**v0.1** — Basic outliner + journals (✅ Done)'),
-      makeBlock('**v0.2** — Graph view + flashcards (✅ Done)'),
-      makeBlock('**v0.3** — Search + camera + S-Pen (✅ Done)'),
-      makeBlock('**v0.4** — Whiteboard + templates (🔄 In Progress)'),
-      makeBlock('**v1.0** — Full feature parity with desktop Logseq (🎯 Target)'),
     ]),
     makeBlock('## Related Pages', [
       makeBlock('[[Logseq Guide]] — Feature documentation'),
-      makeBlock('[[Samsung S23 Ultra]] — Hardware specifications'),
+      makeBlock('[[Media Studio]] — Camera & Audio capture module'),
       makeBlock('[[Knowledge Graph]] — Graph view documentation'),
       makeBlock('[[Flashcards]] — SRS system docs'),
-      makeBlock('[[Building a Second Brain]] — Inspiration'),
     ]),
   ],
+  mediaAttachments: [],
 };
 
 const knowledgeGraphPage: Page = {
@@ -284,7 +297,6 @@ const knowledgeGraphPage: Page = {
   blocks: [
     makeBlock('# 🌐 Knowledge Graph', [
       makeBlock('A **force-directed graph** that visualizes all pages and their connections'),
-      makeBlock('Based on physics simulation: repulsion forces + spring connections + gravity'),
     ]),
     makeBlock('## Physics Model', [
       makeBlock('**Node Repulsion**: All nodes push each other away (Coulomb force)'),
@@ -292,26 +304,14 @@ const knowledgeGraphPage: Page = {
       makeBlock('**Central Gravity**: Gentle pull toward center prevents drift'),
       makeBlock('**Damping**: Velocity reduced each frame to reach equilibrium'),
     ]),
-    makeBlock('## Visual Encoding', [
-      makeBlock('Node size ∝ number of connections (degree centrality)'),
-      makeBlock('Highlighted node = currently active page'),
-      makeBlock('Blue nodes = regular pages'),
-      makeBlock('Green nodes = journal entries'),
-      makeBlock('Edge thickness ∝ link frequency'),
-    ]),
     makeBlock('## Controls', [
       makeBlock('**Drag** — Reposition nodes'),
       makeBlock('**Pinch/Scroll** — Zoom in and out'),
       makeBlock('**Tap node** — Navigate to that page'),
       makeBlock('**Pause button** — Freeze physics simulation'),
-      makeBlock('**Labels toggle** — Show/hide page names'),
-      makeBlock('**Reset** — Return to default layout'),
-    ]),
-    makeBlock('## Related', [
-      makeBlock('[[Bi-directional Links]] — The connections that form the graph'),
-      makeBlock('[[Project Voyager]] — Implementation details'),
     ]),
   ],
+  mediaAttachments: [],
 };
 
 const samsungS23Page: Page = {
@@ -329,7 +329,6 @@ const samsungS23Page: Page = {
       makeBlock('3088 × 1440 px — 500 ppi density'),
       makeBlock('1-120Hz adaptive refresh rate'),
       makeBlock('2200 nits peak brightness'),
-      makeBlock('Gorilla Glass Victus 2'),
     ]),
     makeBlock('## Camera System', [
       makeBlock('**Main**: 200MP f/1.7 Wide, OIS'),
@@ -338,26 +337,56 @@ const samsungS23Page: Page = {
       makeBlock('**Telephoto 2**: 10MP f/4.9, 10× optical, 100× Space Zoom'),
       makeBlock('**Front**: 12MP f/2.2'),
     ]),
-    makeBlock('## Performance', [
-      makeBlock('Snapdragon 8 Gen 2 for Galaxy'),
-      makeBlock('12GB RAM'),
-      makeBlock('256GB / 512GB / 1TB storage'),
-      makeBlock('5000 mAh battery'),
-      makeBlock('45W wired + 15W wireless charging'),
-    ]),
     makeBlock('## S-Pen', [
       makeBlock('4096 levels of pressure sensitivity'),
       makeBlock('0.7mm tip diameter'),
       makeBlock('2.8ms latency'),
       makeBlock('Bluetooth 5.0 for Air Actions'),
-      makeBlock('Built-in storage slot with wireless charging'),
-    ]),
-    makeBlock('## Software', [
-      makeBlock('Android 13 → upgradeable to Android 14'),
-      makeBlock('One UI 5.1'),
-      makeBlock('4 years OS updates guaranteed'),
     ]),
   ],
+  mediaAttachments: [],
+};
+
+const flashcardsPage: Page = {
+  id: 'flashcards',
+  name: 'Flashcards',
+  isJournal: false,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+  properties: { icon: '🃏' },
+  tags: ['feature', 'spaced-repetition', 'learning'],
+  blocks: [
+    makeBlock('# 🃏 Spaced Repetition Flashcards'),
+    makeBlock('## How to Create Cards', [
+      makeBlock('Add `#card` to any block to mark it as a flashcard', [
+        makeBlock('The block becomes the **front** (question)'),
+        makeBlock('Child blocks become the **back** (answer)'),
+      ]),
+    ]),
+    makeBlock('What is the [[Zettlekasten Method]]? #card', [
+      makeBlock('A note-taking system developed by Niklas Luhmann'),
+      makeBlock('Uses atomic notes with bi-directional links'),
+      makeBlock('No hierarchical folders — emergent structure through connections'),
+    ]),
+    makeBlock('What does PARA stand for? #card', [
+      makeBlock('**P**rojects'),
+      makeBlock('**A**reas'),
+      makeBlock('**R**esources'),
+      makeBlock('**A**rchives'),
+    ]),
+    makeBlock('What is the Whisper.cpp audio transcription pipeline? #card', [
+      makeBlock('1. Capture audio at 16kHz mono 16-bit PCM WAV'),
+      makeBlock('2. Save raw audio to local IndexedDB storage'),
+      makeBlock('3. Run Whisper WASM engine on background Web Worker'),
+      makeBlock('4. Bind transcription text to AudioNote object in Room-style DB'),
+    ]),
+    makeBlock('What MediaRecorder format does Voyager use for audio? #card', [
+      makeBlock('16kHz sample rate, mono channel, 16-bit PCM WAV'),
+      makeBlock('Optimal format for Whisper.cpp speech recognition engine'),
+      makeBlock('Fallback: audio/webm;codecs=opus for browser compatibility'),
+    ]),
+  ],
+  mediaAttachments: [],
 };
 
 const buildingSecondBrainPage: Page = {
@@ -371,22 +400,13 @@ const buildingSecondBrainPage: Page = {
   blocks: [
     makeBlock('# 📚 Building a Second Brain', [
       makeBlock('**Author**: Tiago Forte'),
-      makeBlock('**Published**: 2022'),
       makeBlock('**Core thesis**: Externalize your memory and thinking into a trusted digital system'),
     ]),
     makeBlock('## The PARA Method', [
-      makeBlock('Organize all information into 4 categories:', [
-        makeBlock('**P**rojects — Active projects with a deadline and goal', [
-          makeBlock('Example: [[Project Voyager]] — Build Logseq Android App'),
-        ]),
-        makeBlock('**A**reas — Spheres of responsibility with no end date', [
-          makeBlock('Examples: Health, Finances, Career development'),
-        ]),
-        makeBlock('**R**esources — Topics of ongoing interest', [
-          makeBlock('Examples: [[Knowledge Graph]] research, [[React]] patterns'),
-        ]),
-        makeBlock('**A**rchives — Inactive items from other categories'),
-      ]),
+      makeBlock('**P**rojects — Active projects with a deadline and goal'),
+      makeBlock('**A**reas — Spheres of responsibility with no end date'),
+      makeBlock('**R**esources — Topics of ongoing interest'),
+      makeBlock('**A**rchives — Inactive items from other categories'),
     ]),
     makeBlock('## The CODE Framework', [
       makeBlock('**C**apture — Save what resonates'),
@@ -394,26 +414,8 @@ const buildingSecondBrainPage: Page = {
       makeBlock('**D**istill — Find the essence'),
       makeBlock('**E**xpress — Show your work'),
     ]),
-    makeBlock('## Progressive Summarization', [
-      makeBlock('Layer 1: Saved note'),
-      makeBlock('Layer 2: **Bold** the most important passages'),
-      makeBlock('Layer 3: ==Highlight== the most essential bolded passages'),
-      makeBlock('Layer 4: Executive summary in your own words'),
-      makeBlock('Layer 5: Remix/apply in your own work'),
-    ]),
-    makeBlock('## Key Insights', [
-      makeBlock('Information has value when **in motion**, not at rest', [
-        makeBlock("Don't organize for the sake of organizing — do it to express"),
-      ]),
-      makeBlock('Your brain is for **having ideas**, not holding them'),
-      makeBlock('A second brain makes you a better **thinker**, not just a better archivist'),
-    ]),
-    makeBlock('## Related', [
-      makeBlock('[[Zettlekasten Method]] — Niklas Luhmann\'s card index system'),
-      makeBlock('[[Logseq Guide]] — Tool for implementing a second brain'),
-      makeBlock('[[Project Voyager]] — Application of these principles'),
-    ]),
   ],
+  mediaAttachments: [],
 };
 
 const zettlekastenPage: Page = {
@@ -433,81 +435,10 @@ const zettlekastenPage: Page = {
       makeBlock('**Atomicity** — Each note contains exactly one idea'),
       makeBlock('**Autonomy** — Each note is self-contained and understandable alone'),
       makeBlock('**Always link** — Connect each new note to existing notes'),
-      makeBlock('**Own words** — Paraphrase, never copy verbatim'),
       makeBlock('**No hierarchy** — Flat structure with emergent order through links'),
     ]),
-    makeBlock('## Note Types', [
-      makeBlock('**Fleeting notes** — Quick captures, temporary'),
-      makeBlock('**Literature notes** — Summaries from reading (like [[Building a Second Brain]])'),
-      makeBlock('**Permanent notes** — Distilled insights in your own words'),
-      makeBlock('**Index notes** — Entry points into topic clusters'),
-    ]),
-    makeBlock('## vs PARA Method', [
-      makeBlock('Zettlekasten: bottom-up, emergent structure through links'),
-      makeBlock('PARA: top-down, intentional hierarchical organization'),
-      makeBlock('Best: **Combine both** — PARA for projects, Zettlekasten for ideas'),
-    ]),
-    makeBlock('## In [[Logseq]]', [
-      makeBlock('Block references enable Zettlekasten-style atomic notes'),
-      makeBlock('[[Bi-directional Links]] replace physical index cards'),
-      makeBlock('[[Knowledge Graph]] visualizes the emergent network'),
-    ]),
   ],
-};
-
-const flashcardsPage: Page = {
-  id: 'flashcards',
-  name: 'Flashcards',
-  isJournal: false,
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
-  properties: { icon: '🃏' },
-  tags: ['feature', 'spaced-repetition', 'learning'],
-  blocks: [
-    makeBlock('# 🃏 Spaced Repetition Flashcards', [
-      makeBlock('The [[SM-2 Algorithm]] schedules reviews to maximize retention with minimum effort'),
-    ]),
-    makeBlock('## How to Create Cards', [
-      makeBlock('Add `#card` to any block to mark it as a flashcard', [
-        makeBlock('The block becomes the **front** (question)'),
-        makeBlock('Child blocks become the **back** (answer)'),
-      ]),
-    ]),
-    makeBlock('What is the [[Zettlekasten Method]]? #card', [
-      makeBlock('A note-taking system developed by Niklas Luhmann'),
-      makeBlock('Uses atomic notes with bi-directional links'),
-      makeBlock('No hierarchical folders — emergent structure through connections'),
-    ]),
-    makeBlock('What does PARA stand for? #card', [
-      makeBlock('**P**rojects'),
-      makeBlock('**A**reas'),
-      makeBlock('**R**esources'),
-      makeBlock('**A**rchives'),
-      makeBlock('From [[Building a Second Brain]] by Tiago Forte'),
-    ]),
-    makeBlock('What is Progressive Summarization? #card', [
-      makeBlock('A technique for distilling notes across multiple review passes'),
-      makeBlock('Layer 1: Save → Layer 2: Bold → Layer 3: Highlight → Layer 4: Summary'),
-      makeBlock('Reference: [[Building a Second Brain]]'),
-    ]),
-    makeBlock('What are the 4 CODE steps? #card', [
-      makeBlock('**C**apture what resonates'),
-      makeBlock('**O**rganize where it belongs'),
-      makeBlock('**D**istill the essence'),
-      makeBlock('**E**xpress and share it'),
-    ]),
-    makeBlock('How does the S-Pen integrate with [[Logseq Mobile]]? #card', [
-      makeBlock('Screen Write: Draw annotations directly on notes'),
-      makeBlock('Handwrite to Text: OCR converts handwriting to typed text'),
-      makeBlock('Quick Memo: Floating sticky note syncs to journal'),
-    ]),
-    makeBlock('## SM-2 Algorithm Ratings', [
-      makeBlock('**Forgot (0)** — Reset interval to 1 day'),
-      makeBlock('**Hard (1)** — Ease factor decreases, short interval'),
-      makeBlock('**Good (3)** — Normal progression'),
-      makeBlock('**Easy (5)** — Ease factor increases, long interval'),
-    ]),
-  ],
+  mediaAttachments: [],
 };
 
 const reactPage: Page = {
@@ -526,16 +457,11 @@ const reactPage: Page = {
     makeBlock('## Core Concepts Used in [[Project Voyager]]', [
       makeBlock('**Hooks**: useState, useEffect, useCallback, useRef, useReducer, useContext'),
       makeBlock('**Component Composition**: Every UI element is a reusable component'),
-      makeBlock('**Controlled Components**: Form state managed by React'),
       makeBlock('**Canvas API**: Used for [[Knowledge Graph]] and S-Pen drawing'),
-    ]),
-    makeBlock('## Patterns Applied', [
-      makeBlock('**Context + Reducer** for global state (database, settings)'),
-      makeBlock('**Custom Hooks** for encapsulating complex logic'),
-      makeBlock('**Memoization** (useMemo, useCallback) for graph performance'),
-      makeBlock('**Refs** for DOM access (canvas, video, scroll)'),
+      makeBlock('**MediaRecorder API**: Used for audio/video capture in [[Media Studio]]'),
     ]),
   ],
+  mediaAttachments: [],
 };
 
 const todosPage: Page = {
@@ -547,10 +473,7 @@ const todosPage: Page = {
   properties: { icon: '✅' },
   tags: ['tasks', 'productivity'],
   blocks: [
-    makeBlock('# ✅ Task Management', [
-      makeBlock('All tasks across your knowledge base in one place'),
-      makeBlock('Tasks are automatically extracted from all pages and journals'),
-    ]),
+    makeBlock('# ✅ Task Management'),
     makeBlock('## Active Tasks', [
       makeBlock('Complete [[Logseq Mobile]] whiteboard feature', [], 'DOING'),
       makeBlock('Write unit tests for graph engine', [], 'TODO'),
@@ -558,61 +481,16 @@ const todosPage: Page = {
       makeBlock('Review [[Building a Second Brain]] chapter 5', [], 'TODO'),
       makeBlock('Share [[Project Voyager]] demo with team', [], 'NOW'),
     ]),
-    makeBlock('## Scheduled', [
-      makeBlock('Plugin API research and prototyping', [], 'LATER'),
-      makeBlock('Org-mode parser implementation', [], 'LATER'),
-      makeBlock('RTC sync research', [], 'LATER'),
-    ]),
     makeBlock('## Completed', [
       makeBlock('Setup project boilerplate', [], 'DONE'),
       makeBlock('Implement block outliner', [], 'DONE'),
       makeBlock('Add bi-directional link parsing', [], 'DONE'),
       makeBlock('Build knowledge graph with physics', [], 'DONE'),
       makeBlock('Implement SM-2 flashcard algorithm', [], 'DONE'),
-      makeBlock('Add camera integration', [], 'DONE'),
+      makeBlock('Add camera + audio capture + transcription', [], 'DONE'),
     ]),
   ],
-};
-
-const templatePage: Page = {
-  id: 'templates',
-  name: 'Templates',
-  isJournal: false,
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
-  properties: { icon: '📋' },
-  tags: ['templates', 'productivity'],
-  blocks: [
-    makeBlock('# 📋 Templates', [
-      makeBlock('Reusable block structures for common workflows'),
-      makeBlock('Use the `/template` slash command to insert these'),
-    ]),
-    makeBlock('## Meeting Notes Template', [
-      makeBlock('template:: meeting-notes'),
-      makeBlock('**Date**: [[{{date}}]]'),
-      makeBlock('**Attendees**: '),
-      makeBlock('**Agenda**:', [makeBlock('Item 1'), makeBlock('Item 2')]),
-      makeBlock('**Notes**:', [makeBlock('Key point 1'), makeBlock('Key point 2')]),
-      makeBlock('**Action Items**:', [makeBlock('Action 1', [], 'TODO'), makeBlock('Action 2', [], 'TODO')]),
-    ]),
-    makeBlock('## Daily Review Template', [
-      makeBlock('template:: daily-review'),
-      makeBlock('**What did I accomplish today?**', [makeBlock('')]),
-      makeBlock('**What should I do tomorrow?**', [makeBlock('', [], 'TODO')]),
-      makeBlock('**What am I grateful for?**', [makeBlock('')]),
-      makeBlock('**One insight from today**:', [makeBlock('')]),
-    ]),
-    makeBlock('## Book Notes Template', [
-      makeBlock('template:: book-notes'),
-      makeBlock('**Author**: '),
-      makeBlock('**Published**: '),
-      makeBlock('**My Rating**: ⭐⭐⭐⭐⭐'),
-      makeBlock('**Summary**: '),
-      makeBlock('**Key Ideas**:', [makeBlock('Idea 1')]),
-      makeBlock('**Quotes**:', [makeBlock('> ')]),
-      makeBlock('**Actions to take**: ', [], 'TODO'),
-    ]),
-  ],
+  mediaAttachments: [],
 };
 
 const andyMatuschakPage: Page = {
@@ -629,38 +507,64 @@ const andyMatuschakPage: Page = {
       makeBlock('Former Apple engineer, Khan Academy VP of Product'),
     ]),
     makeBlock('## Key Concepts', [
-      makeBlock('**Evergreen Notes** — Notes that accumulate and evolve over time', [
-        makeBlock('Should be atomic — one concept per note'),
-        makeBlock('Should be densely linked'),
-        makeBlock('Should be in your own words'),
-      ]),
+      makeBlock('**Evergreen Notes** — Notes that accumulate and evolve over time'),
       makeBlock('**Spaced Repetition** — Scientifically optimal review scheduling'),
       makeBlock('**Executable Books** — Books you can interact with and execute code within'),
     ]),
-    makeBlock('## Related to [[Project Voyager]]', [
-      makeBlock('[[Flashcards]] system inspired by his SRS research'),
-      makeBlock('[[Knowledge Graph]] visual inspired by evergreen note linking'),
-      makeBlock('[[Bi-directional Links]] inspired by his note-taking philosophy'),
-    ]),
   ],
+  mediaAttachments: [],
 };
 
 export function buildInitialDatabase(): Record<string, Page> {
-  const today = journalPage(0);
-  const yesterday = journalPage(1);
-  const twoDaysAgo = journalPage(2);
-  const threeDaysAgo = journalPage(3);
-
   const pages: Record<string, Page> = {};
-
   [
-    today, yesterday, twoDaysAgo, threeDaysAgo,
-    logseqGuidePage, projectVoyagerPage, knowledgeGraphPage,
-    samsungS23Page, buildingSecondBrainPage, zettlekastenPage,
-    flashcardsPage, reactPage, todosPage, templatePage, andyMatuschakPage,
+    journalPage(0),
+    journalPage(1),
+    journalPage(2),
+    journalPage(3),
+    logseqGuidePage,
+    projectVoyagerPage,
+    knowledgeGraphPage,
+    samsungS23Page,
+    buildingSecondBrainPage,
+    zettlekastenPage,
+    flashcardsPage,
+    reactPage,
+    todosPage,
+    andyMatuschakPage,
+    mediaStudioPage,
   ].forEach(p => { pages[p.id] = p; });
-
   return pages;
+}
+
+export function buildInitialAudioNotes(): AudioNote[] {
+  return [
+    {
+      id: 'audio-sample-1',
+      name: 'Project Voyager brainstorm',
+      dataUrl: '',
+      duration: 45.3,
+      transcription: 'Remember to add the camera module to project voyager. The audio recording should capture at 16 kilohertz mono for whisper compatibility. Also need to implement the waveform visualization using the canvas API.',
+      transcriptionStatus: 'done',
+      createdAt: new Date(Date.now() - 86400000).toISOString(),
+      waveform: Array.from({ length: 80 }, () => Math.random() * 0.8 + 0.1),
+      cropStart: 0,
+      cropEnd: 45.3,
+      pageId: 'project-voyager',
+    },
+    {
+      id: 'audio-sample-2',
+      name: 'Daily standup notes',
+      dataUrl: '',
+      duration: 23.1,
+      transcription: 'Today I worked on the knowledge graph physics simulation and fixed the node repulsion algorithm. Tomorrow planning to focus on the S-Pen drawing canvas integration.',
+      transcriptionStatus: 'done',
+      createdAt: new Date(Date.now() - 3600000).toISOString(),
+      waveform: Array.from({ length: 80 }, () => Math.random() * 0.7 + 0.15),
+      cropStart: 0,
+      cropEnd: 23.1,
+    },
+  ];
 }
 
 export function getTodayJournalId(): string {
@@ -675,3 +579,20 @@ export function formatJournalTitle(dateStr: string): string {
     return dateStr;
   }
 }
+
+export const DEFAULT_SETTINGS: AppSettings = {
+  theme: 'dark',
+  accentColor: '#6366f1',
+  fontSize: 14,
+  fontFamily: 'Inter',
+  showBrackets: false,
+  enableSpellCheck: true,
+  autoSave: true,
+  sidebarOpen: false,
+  rightSidebarOpen: false,
+  customCSS: '',
+  bezelColor: '#0a0a0a',
+  navMode: 'buttons',
+  batteryLevel: 82,
+  charging: false,
+};

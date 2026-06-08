@@ -11,6 +11,25 @@ export interface Block {
   uuid: string;
 }
 
+export interface MediaAttachment {
+  id: string;
+  type: 'image' | 'video' | 'audio';
+  dataUrl: string;
+  name: string;
+  size?: number;
+  duration?: number;
+  thumbnailUrl?: string;
+  transcription?: string;
+  transcriptionStatus?: 'idle' | 'processing' | 'done' | 'error';
+  createdAt: string;
+  editedAt?: string;
+  cropData?: { x: number; y: number; w: number; h: number };
+  audioCropData?: { start: number; end: number };
+  width?: number;
+  height?: number;
+  mimeType?: string;
+}
+
 export interface Page {
   id: string;
   name: string;
@@ -21,6 +40,7 @@ export interface Page {
   properties: Record<string, string>;
   icon?: string;
   tags: string[];
+  mediaAttachments?: MediaAttachment[];
 }
 
 export interface GraphNode {
@@ -91,22 +111,6 @@ export interface SearchResult {
   isJournal: boolean;
 }
 
-export interface TemplateItem {
-  name: string;
-  content: string;
-  blocks: string[];
-}
-
-export interface Plugin {
-  id: string;
-  name: string;
-  description: string;
-  enabled: boolean;
-  icon: string;
-}
-
-export type ActiveView = 'editor' | 'graph' | 'flashcards' | 'search' | 'settings' | 'allPages' | 'todos' | 'whiteboards';
-
 export interface WhiteboardElement {
   id: string;
   type: 'rect' | 'ellipse' | 'text' | 'arrow' | 'line' | 'sticky';
@@ -121,4 +125,26 @@ export interface WhiteboardElement {
   fontSize?: number;
   rotation?: number;
   points?: { x: number; y: number }[];
+}
+
+export type ActiveView = 'editor' | 'graph' | 'flashcards' | 'search' | 'settings' | 'allPages' | 'todos' | 'media';
+
+export interface AudioNote {
+  id: string;
+  name: string;
+  dataUrl: string;
+  duration: number;
+  transcription: string;
+  transcriptionStatus: 'idle' | 'processing' | 'done' | 'error';
+  createdAt: string;
+  waveform: number[];
+  cropStart: number;
+  cropEnd: number;
+  pageId?: string;
+}
+
+export interface CameraState {
+  mode: 'camera' | 'gallery' | 'video' | 'audio';
+  isRecording: boolean;
+  capturedMedia: MediaAttachment | null;
 }

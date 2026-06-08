@@ -1,0 +1,80 @@
+import React from 'react';
+
+interface Props {
+  content: string;
+  onLinkClick?: (target: string, e: React.MouseEvent) => void;
+  className?: string;
+}
+
+export default function MarkdownRenderer({ content, onLinkClick, className = '' }: Props) {
+  const renderInline = (text: string): React.ReactNode[] => {
+    const parts: React.ReactNode[] = [];
+    let remaining = text;
+    let key = 0;
+
+    const patterns: [RegExp, (match: string, ...groups: string[]) => React.ReactNode][] = [
+      [/\[\[([^\]]+)\]\]/g, (_, p1) => (
+        <button
+          key={key++}
+          onClick={(e) => onLinkClick?.(p1, e)}
+          className="text-indigo-400 hover:text-indigo-300 hover:underline font-medium transition-colors"
+        >
+          {p1}
+        </button>
+      )],
+      [/#([\w-]+)/g, (_, p1) => (
+        <span key={key++} className="text-violet-400 hover:text-violet-300 cursor-pointer font-medium">#{p1}</span>
+      )],
+      [/\*\*([^*]+)\*\*/g, (_, p1) => <strong key={key++} className="font-semibold text-white">{p1}</strong>],
+      [/\*([^*]+)\*/g, (_, p1) => <em key={key++} className="italic text-slate-300">{p1}</em>],
+      [/~~([^~]+)~~/g, (_, p1) => <del key={key++} className="line-through text-slate-500">{p1}</del>],
+      [/==([^=]+)==/g, (_, p1) => <mark key={key++} className="bg-yellow-400/30 text-yellow-200 px-0.5 rounded">{p1}</mark>],
+      [/`([^`]+)`/g, (_, p1) => <code key={key++} className="bg-slate-700 text-emerald-300 px-1 py-0.5 rounded text-[0.85em] font-mono">{p1}</code>],
+    ];
+
+    // Merge all patterns and process them in order of first occurrence
+    while (remaining.length > 0) {
+      let earliest = -1;
+      let earliestMatch: RegExpExecArray | null = null;
+      let earliestRenderer: ((match: string, ...groups: string[]) => React.ReactNode) | null = null;
+
+      for (const [pattern, renderer] of patterns) {
+        pattern.lastIndex = 0;
+        const m = pattern.exec(remaining);
+        if (m && (earliest === -1 || m.index < earliest)) {
+          earliest = m.index;
+          earliestMatch = m;
+          earliestRenderer = renderer;
+        }
+      }
+
+      if (earliest === -1 || !earliestMatch || !earliestRenderer) {
+        parts.push(<span key={key++}>{remaining}</span>);
+        break;
+      }
+
+      if (earliest > 0) {
+        parts.push(<span key={key++}>{remaining.slice(0, earliest)}</span>);
+      }
+      parts.push(earliestRenderer(earliestMatch[0], ...earliestMatch.slice(1)));
+      remaining = remaining.slice(earliest + earliestMatch[0].length);
+    }
+
+    return parts;
+  };
+
+  const renderBlock = (text: string): React.ReactNode => {
+    if (text.startsWith('# ')) return <h1 className="text-lg font-bold text-white leading-tight">{renderInline(text.slice(2))}</h1>;
+    if (text.startsWith('## ')) return <h2 className="text-base font-semibold text-white/90 leading-tight">{renderInline(text.slice(3))}</h2>;
+    if (text.startsWith('### ')) return <h3 className="text-sm font-semibold text-white/80 leading-tight">{renderInline(text.slice(4))}</h3>;
+    if (text.startsWith('> ')) return <blockquote className="border-l-2 border-indigo-400 pl-2 text-slate-400 italic">{renderInline(text.slice(2))}</blockquote>;
+    if (text.startsWith('```')) return <code className="block bg-slate-800 text-emerald-300 p-2 rounded text-xs font-mono">{text.slice(3)}</code>;
+    return <span className="text-slate-200 leading-relaxed">{renderInline(text)}</span>;
+  };
+
+  return (
+    <span className={`break-words ${className}`}>
+      {renderBlock(content)}
+    </span>
+  );
+}
