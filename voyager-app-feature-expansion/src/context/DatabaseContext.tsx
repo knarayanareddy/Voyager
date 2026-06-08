@@ -1,8 +1,35 @@
-import React, { createContext, useContext, useReducer, useCallback } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useReducer,
+  useCallback,
+  useEffect,
+  useRef,
+  useMemo,
+  useState,
+} from 'react';
 import { Page, Block, AppSettings, AudioNote, MediaAttachment, ActiveView } from '../types';
-import { buildInitialDatabase, buildInitialAudioNotes, DEFAULT_SETTINGS, getTodayJournalId, genId, genUUID } from '../mockData';
+import {
+  buildInitialDatabase,
+  buildInitialAudioNotes,
+  DEFAULT_SETTINGS,
+  getTodayJournalId,
+  genId,
+  genUUID,
+  extractRefs,
+} from '../mockData';
+import { dbService, initStorage } from '../utils/db';
+import {
+  buildBacklinksIndex,
+  BacklinksIndex,
+  serialiseBacklinks,
+  deserialiseBacklinks,
+  updateBacklinksForPage,
+} from '../lib/backlinksIndex';
 
-interface DatabaseState {
+// ─── State shape ─────────────────────────────────────────────────────────────
+
+export interface DatabaseState {
   db: Record<string, Page>;
   currentPageId: string;
   sidebarPageId: string | null;
@@ -10,9 +37,14 @@ interface DatabaseState {
   settings: AppSettings;
   audioNotes: AudioNote[];
   activeView: ActiveView;
+  mediaAttachments: MediaAttachment[];
+  // Serialised backlinks index (Map is not JSON-safe for direct state storage)
+  backlinksRaw: Record<string, string[]>;
 }
 
-type Action =
+// ─── Action union ────────────────────────────────────────────────────────────
+
+export type Action =
   | { type: 'NAVIGATE'; pageId: string }
   | { type: 'UPDATE_BLOCK'; pageId: string; blockId: string; content: string }
   | { type: 'UPDATE_BLOCK_STATUS'; pageId: string; blockId: string; status: Block['taskStatus'] }
@@ -33,7 +65,10 @@ type Action =
   | { type: 'ADD_AUDIO_NOTE'; note: AudioNote }
   | { type: 'UPDATE_AUDIO_NOTE'; note: AudioNote }
   | { type: 'DELETE_AUDIO_NOTE'; noteId: string }
-  | { type: 'SET_ACTIVE_VIEW'; view: ActiveView };
+  | { type: 'SET_ACTIVE_VIEW'; view: ActiveView }
+  | { type: 'HYDRATE'; state: DatabaseState };
+
+// ─── Block tree helpers ───────────────────────────────────────────────────────
 
 function makeBlock(content: string, taskStatus: Block['taskStatus'] = null): Block {
   return {
@@ -44,11 +79,15 @@ function makeBlock(content: string, taskStatus: Block['taskStatus'] = null): Blo
     collapsed: false,
     taskStatus,
     properties: {},
-    refs: [],
+    refs: extractRefs(content),
   };
 }
 
-function findAndUpdateBlock(blocks: Block[], blockId: string, updater: (b: Block) => Block): Block[] {
+function findAndUpdateBlock(
+  blocks: Block[],
+  blockId: string,
+  updater: (b: Block) => Block,
+): Block[] {
   return blocks.map(b => {
     if (b.id === blockId) return updater(b);
     if (b.children.length > 0) {
@@ -57,8 +96,6 @@ function findAndUpdateBlock(blocks: Block[], blockId: string, updater: (b: Block
     return b;
   });
 }
-
-
 
 function addBlockAfter(blocks: Block[], afterId: string, newBlock: Block): Block[] {
   const result: Block[] = [];
@@ -75,10 +112,58 @@ function deleteBlockById(blocks: Block[], id: string): Block[] {
     .map(b => ({ ...b, children: deleteBlockById(b.children, id) }));
 }
 
+function indentBlockTree(blocks: Block[], blockId: string): Block[] {
+  for (let i = 0; i < blocks.length; i++) {
+    if (blocks[i].id === blockId) {
+      if (i === 0) return blocks;
+      const prev = blocks[i - 1];
+      const target = blocks[i];
+      const newPrev: Block = { ...prev, children: [...prev.children, target] };
+      return [
+        ...blocks.slice(0, i - 1),
+        newPrev,
+        ...blocks.slice(i + 1),
+      ];
+    }
+    const newChildren = indentBlockTree(blocks[i].children, blockId);
+    if (newChildren !== blocks[i].children) {
+      return blocks.map((b, idx) => idx === i ? { ...b, children: newChildren } : b);
+    }
+  }
+  return blocks;
+}
+
+function outdentBlockTree(blocks: Block[], blockId: string, parentId: string | null = null): { blocks: Block[]; ejected: Block | null } {
+  for (let i = 0; i < blocks.length; i++) {
+    if (blocks[i].id === blockId) {
+      if (parentId === null) return { blocks, ejected: null };
+      const ejected = blocks[i];
+      return {
+        blocks: blocks.filter((_, idx) => idx !== i),
+        ejected,
+      };
+    }
+    const result = outdentBlockTree(blocks[i].children, blockId, blocks[i].id);
+    if (result.ejected) {
+      const newBlock = { ...blocks[i], children: result.blocks };
+      const updated = [...blocks];
+      updated[i] = newBlock;
+      updated.splice(i + 1, 0, result.ejected);
+      return { blocks: updated, ejected: null };
+    }
+  }
+  return { blocks, ejected: null };
+}
+
 const TASK_CYCLE: Block['taskStatus'][] = ['TODO', 'DOING', 'DONE', 'LATER', 'NOW', 'CANCELLED', null];
+
+// ─── Reducer ─────────────────────────────────────────────────────────────────
 
 function reducer(state: DatabaseState, action: Action): DatabaseState {
   switch (action.type) {
+    case 'HYDRATE':
+      return action.state;
+
     case 'NAVIGATE':
       return { ...state, currentPageId: action.pageId };
 
@@ -88,8 +173,23 @@ function reducer(state: DatabaseState, action: Action): DatabaseState {
     case 'UPDATE_BLOCK': {
       const page = state.db[action.pageId];
       if (!page) return state;
-      const updatedBlocks = findAndUpdateBlock(page.blocks, action.blockId, b => ({ ...b, content: action.content }));
-      return { ...state, db: { ...state.db, [action.pageId]: { ...page, blocks: updatedBlocks, updatedAt: new Date().toISOString() } } };
+      const updatedBlocks = findAndUpdateBlock(page.blocks, action.blockId, b => ({
+        ...b,
+        content: action.content,
+        refs: extractRefs(action.content),
+      }));
+      const newPage = { ...page, blocks: updatedBlocks, updatedAt: new Date().toISOString() };
+      const newDb = {
+        ...state.db,
+        [action.pageId]: newPage,
+      };
+
+      // Incrementally update backlinks for just the edited page
+      const currentIndex = deserialiseBacklinks(state.backlinksRaw);
+      const nextIndex = updateBacklinksForPage(currentIndex, action.pageId, page, newPage);
+      const nextBacklinksRaw = serialiseBacklinks(nextIndex);
+
+      return { ...state, db: newDb, backlinksRaw: nextBacklinksRaw };
     }
 
     case 'UPDATE_BLOCK_STATUS': {
@@ -97,17 +197,29 @@ function reducer(state: DatabaseState, action: Action): DatabaseState {
       if (!page) return state;
       const updatedBlocks = findAndUpdateBlock(page.blocks, action.blockId, b => {
         const currIdx = TASK_CYCLE.indexOf(b.taskStatus);
-        const nextStatus = action.status !== undefined ? action.status : TASK_CYCLE[(currIdx + 1) % TASK_CYCLE.length];
+        const nextStatus =
+          action.status !== undefined
+            ? action.status
+            : TASK_CYCLE[(currIdx + 1) % TASK_CYCLE.length];
         return { ...b, taskStatus: nextStatus };
       });
-      return { ...state, db: { ...state.db, [action.pageId]: { ...page, blocks: updatedBlocks } } };
+      return {
+        ...state,
+        db: { ...state.db, [action.pageId]: { ...page, blocks: updatedBlocks } },
+      };
     }
 
     case 'TOGGLE_COLLAPSE': {
       const page = state.db[action.pageId];
       if (!page) return state;
-      const updatedBlocks = findAndUpdateBlock(page.blocks, action.blockId, b => ({ ...b, collapsed: !b.collapsed }));
-      return { ...state, db: { ...state.db, [action.pageId]: { ...page, blocks: updatedBlocks } } };
+      const updatedBlocks = findAndUpdateBlock(page.blocks, action.blockId, b => ({
+        ...b,
+        collapsed: !b.collapsed,
+      }));
+      return {
+        ...state,
+        db: { ...state.db, [action.pageId]: { ...page, blocks: updatedBlocks } },
+      };
     }
 
     case 'ADD_BLOCK': {
@@ -115,18 +227,62 @@ function reducer(state: DatabaseState, action: Action): DatabaseState {
       if (!page) return state;
       const newBlock = makeBlock(action.content ?? '');
       const updatedBlocks = addBlockAfter(page.blocks, action.afterBlockId, newBlock);
-      return { ...state, db: { ...state.db, [action.pageId]: { ...page, blocks: updatedBlocks } } };
+      return {
+        ...state,
+        db: { ...state.db, [action.pageId]: { ...page, blocks: updatedBlocks } },
+      };
     }
 
     case 'DELETE_BLOCK': {
       const page = state.db[action.pageId];
       if (!page) return state;
       const updatedBlocks = deleteBlockById(page.blocks, action.blockId);
-      return { ...state, db: { ...state.db, [action.pageId]: { ...page, blocks: updatedBlocks } } };
+      const newPage = {
+        ...page,
+        blocks: updatedBlocks,
+      };
+      const newDb = { ...state.db, [action.pageId]: newPage };
+
+      // Incrementally update backlinks on block deletion
+      const currentIndex = deserialiseBacklinks(state.backlinksRaw);
+      const nextIndex = updateBacklinksForPage(currentIndex, action.pageId, page, newPage);
+      const nextBacklinksRaw = serialiseBacklinks(nextIndex);
+
+      return {
+        ...state,
+        db: newDb,
+        backlinksRaw: nextBacklinksRaw,
+      };
+    }
+
+    case 'INDENT_BLOCK': {
+      const page = state.db[action.pageId];
+      if (!page) return state;
+      const updatedBlocks = indentBlockTree(page.blocks, action.blockId);
+      return {
+        ...state,
+        db: { ...state.db, [action.pageId]: { ...page, blocks: updatedBlocks } },
+      };
+    }
+
+    case 'OUTDENT_BLOCK': {
+      const page = state.db[action.pageId];
+      if (!page) return state;
+      const { blocks: updatedBlocks } = outdentBlockTree(page.blocks, action.blockId);
+      return {
+        ...state,
+        db: { ...state.db, [action.pageId]: { ...page, blocks: updatedBlocks } },
+      };
     }
 
     case 'CREATE_PAGE': {
-      const id = action.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+      const id = action.name
+        .toLowerCase()
+        .replace(/\s+/g, '-')
+        .replace(/[^a-z0-9-]/g, '');
+      if (state.db[id]) {
+        return action.navigate ? { ...state, currentPageId: id } : state;
+      }
       const newPage: Page = {
         id,
         name: action.name,
@@ -138,10 +294,18 @@ function reducer(state: DatabaseState, action: Action): DatabaseState {
         tags: [],
         mediaAttachments: [],
       };
+      const newDb = { ...state.db, [id]: newPage };
+
+      // Incrementally update backlinks index for the new page
+      const currentIndex = deserialiseBacklinks(state.backlinksRaw);
+      const nextIndex = updateBacklinksForPage(currentIndex, id, undefined, newPage);
+      const nextBacklinksRaw = serialiseBacklinks(nextIndex);
+
       return {
         ...state,
-        db: { ...state.db, [id]: newPage },
+        db: newDb,
         currentPageId: action.navigate ? id : state.currentPageId,
+        backlinksRaw: nextBacklinksRaw,
       };
     }
 
@@ -159,94 +323,346 @@ function reducer(state: DatabaseState, action: Action): DatabaseState {
       return { ...state, sidebarPageId: action.pageId };
 
     case 'OPEN_SIDEBAR':
-      return { ...state, sidebarPageId: action.pageId, settings: { ...state.settings, rightSidebarOpen: true } };
+      return {
+        ...state,
+        sidebarPageId: action.pageId,
+        settings: { ...state.settings, rightSidebarOpen: true },
+      };
 
     case 'CLOSE_SIDEBAR':
-      return { ...state, sidebarPageId: null, settings: { ...state.settings, rightSidebarOpen: false } };
+      return {
+        ...state,
+        sidebarPageId: null,
+        settings: { ...state.settings, rightSidebarOpen: false },
+      };
 
     case 'ADD_MEDIA': {
       const page = state.db[action.pageId];
       if (!page) return state;
-      const updatedPage = { ...page, mediaAttachments: [...(page.mediaAttachments || []), action.media] };
-      return { ...state, db: { ...state.db, [action.pageId]: updatedPage } };
+      return {
+        ...state,
+        db: {
+          ...state.db,
+          [action.pageId]: {
+            ...page,
+            mediaAttachments: [...(page.mediaAttachments ?? []), action.media],
+          },
+        },
+        mediaAttachments: [...(state.mediaAttachments ?? []), action.media],
+      };
     }
 
     case 'DELETE_MEDIA': {
       const page = state.db[action.pageId];
       if (!page) return state;
-      const updatedPage = { ...page, mediaAttachments: (page.mediaAttachments || []).filter(m => m.id !== action.mediaId) };
-      return { ...state, db: { ...state.db, [action.pageId]: updatedPage } };
+      return {
+        ...state,
+        db: {
+          ...state.db,
+          [action.pageId]: {
+            ...page,
+            mediaAttachments: (page.mediaAttachments ?? []).filter(
+              m => m.id !== action.mediaId,
+            ),
+          },
+        },
+        mediaAttachments: (state.mediaAttachments ?? []).filter(
+          m => m.id !== action.mediaId,
+        ),
+      };
     }
 
     case 'UPDATE_MEDIA': {
       const page = state.db[action.pageId];
       if (!page) return state;
-      const updatedPage = { ...page, mediaAttachments: (page.mediaAttachments || []).map(m => m.id === action.media.id ? action.media : m) };
-      return { ...state, db: { ...state.db, [action.pageId]: updatedPage } };
+      return {
+        ...state,
+        db: {
+          ...state.db,
+          [action.pageId]: {
+            ...page,
+            mediaAttachments: (page.mediaAttachments ?? []).map(m =>
+              m.id === action.media.id ? action.media : m,
+            ),
+          },
+        },
+        mediaAttachments: (state.mediaAttachments ?? []).map(m =>
+          m.id === action.media.id ? action.media : m,
+        ),
+      };
     }
 
     case 'ADD_AUDIO_NOTE':
       return { ...state, audioNotes: [...state.audioNotes, action.note] };
 
     case 'UPDATE_AUDIO_NOTE':
-      return { ...state, audioNotes: state.audioNotes.map(n => n.id === action.note.id ? action.note : n) };
+      return {
+        ...state,
+        audioNotes: state.audioNotes.map(n => (n.id === action.note.id ? action.note : n)),
+      };
 
     case 'DELETE_AUDIO_NOTE':
-      return { ...state, audioNotes: state.audioNotes.filter(n => n.id !== action.noteId) };
+      return {
+        ...state,
+        audioNotes: state.audioNotes.filter(n => n.id !== action.noteId),
+      };
 
     default:
       return state;
   }
 }
 
-interface DatabaseContextType {
-  state: DatabaseState;
-  dispatch: React.Dispatch<Action>;
-  navigateTo: (pageId: string) => void;
-  getOrCreatePage: (name: string) => string;
-}
+// ─── Initial state factory ────────────────────────────────────────────────────
 
-const DatabaseContext = createContext<DatabaseContextType | null>(null);
-
-function initState(): DatabaseState {
+function buildFreshState(): DatabaseState {
+  const db = buildInitialDatabase();
   return {
-    db: buildInitialDatabase(),
+    db,
     currentPageId: getTodayJournalId(),
     sidebarPageId: null,
     favorites: ['project-voyager', 'media-studio'],
     settings: DEFAULT_SETTINGS,
     audioNotes: buildInitialAudioNotes(),
     activeView: 'editor',
+    mediaAttachments: [],
+    backlinksRaw: serialiseBacklinks(buildBacklinksIndex(db)),
   };
 }
 
+// ─── Context ─────────────────────────────────────────────────────────────────
+
+interface DatabaseContextType {
+  state: DatabaseState;
+  dispatch: React.Dispatch<Action>;
+  navigateTo: (pageId: string) => void;
+  getOrCreatePage: (name: string) => string;
+  backlinks: BacklinksIndex;
+  loading: boolean;
+  actions: any;
+}
+
+const DatabaseContext = createContext<DatabaseContextType | null>(null);
+
+// ─── Provider ─────────────────────────────────────────────────────────────────
+
 export function DatabaseProvider({ children }: { children: React.ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, undefined, initState);
+  const [state, dispatch] = useReducer(reducer, undefined, buildFreshState);
+  const [loading, setLoading] = useState(true);
+  const hydratedRef = useRef(false);
 
-  const navigateTo = useCallback((pageId: string) => {
-    if (!state.db[pageId]) {
-      const name = pageId.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-      dispatch({ type: 'CREATE_PAGE', name, navigate: true });
-    } else {
-      dispatch({ type: 'NAVIGATE', pageId });
-    }
-    dispatch({ type: 'SET_ACTIVE_VIEW', view: 'editor' });
-  }, [state.db]);
+  const prevDbRef = useRef<Record<string, Page>>({});
+  const prevSettingsRef = useRef<AppSettings | null>(null);
+  const prevFavoritesRef = useRef<string[]>([]);
+  const prevAudioRef = useRef<AudioNote[]>([]);
 
-  const getOrCreatePage = useCallback((name: string): string => {
-    const id = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-    if (!state.db[id]) {
-      dispatch({ type: 'CREATE_PAGE', name });
+  // ── Hydrate from IndexedDB on mount ──────────────────────────────────────
+  useEffect(() => {
+    const initData = async () => {
+      try {
+        await initStorage();
+
+        let storedSettings = await dbService.getSettings();
+        if (!storedSettings) {
+          storedSettings = DEFAULT_SETTINGS;
+          await dbService.saveSettings(DEFAULT_SETTINGS);
+        }
+
+        const storedFavorites = await dbService.getFavorites();
+        const storedAudio = await dbService.getAllAudioNotes();
+        const storedMedia = await dbService.getAllMedia();
+        const storedPages = await dbService.getAllPages();
+
+        const pagesMap: Record<string, Page> = {};
+        if (storedPages.length === 0) {
+          const mockPages = buildInitialDatabase();
+          for (const page of Object.values(mockPages)) {
+            await dbService.savePage(page);
+            pagesMap[page.id] = page;
+          }
+        } else {
+          storedPages.forEach(p => {
+            pagesMap[p.id] = p;
+          });
+        }
+
+        // Attach media items to their pages in state metadata
+        storedMedia.forEach(media => {
+          // Find which page owns this media (page ID prefix matches or traverse)
+          Object.values(pagesMap).forEach(page => {
+            if (page.blocks.some(b => b.content.includes(media.id))) {
+              if (!page.mediaAttachments) page.mediaAttachments = [];
+              if (!page.mediaAttachments.some(m => m.id === media.id)) {
+                page.mediaAttachments.push(media);
+              }
+            }
+          });
+        });
+
+        const initialBacklinksRaw = serialiseBacklinks(buildBacklinksIndex(pagesMap));
+
+        const hydratedState: DatabaseState = {
+          db: pagesMap,
+          currentPageId: getTodayJournalId(),
+          sidebarPageId: null,
+          favorites: storedFavorites.length > 0 ? storedFavorites : ['project-voyager', 'media-studio'],
+          settings: storedSettings,
+          audioNotes: storedAudio,
+          activeView: 'editor',
+          mediaAttachments: storedMedia,
+          backlinksRaw: initialBacklinksRaw,
+        };
+
+        dispatch({ type: 'HYDRATE', state: hydratedState });
+        hydratedRef.current = true;
+      } catch (error) {
+        console.error('Failed to initialize local database:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initData();
+  }, []);
+
+  // ── Auto-save on state change (Incremental) ─────────────────────────
+  useEffect(() => {
+    if (!hydratedRef.current) return;
+
+    // 1. Sync pages incrementally
+    Object.keys(state.db).forEach(id => {
+      const page = state.db[id];
+      const prevPage = prevDbRef.current[id];
+      if (page !== prevPage) {
+        dbService.savePage(page);
+      }
+    });
+    // Handle page deletions
+    Object.keys(prevDbRef.current).forEach(id => {
+      if (!state.db[id]) {
+        dbService.deletePage(id);
+      }
+    });
+    prevDbRef.current = state.db;
+
+    // 2. Sync settings
+    if (state.settings !== prevSettingsRef.current) {
+      dbService.saveSettings(state.settings);
+      prevSettingsRef.current = state.settings;
     }
-    return id;
-  }, [state.db]);
+
+    // 3. Sync favorites
+    if (state.favorites !== prevFavoritesRef.current) {
+      dbService.saveFavorites(state.favorites);
+      prevFavoritesRef.current = state.favorites;
+    }
+
+    // 4. Sync audio notes metadata
+    if (state.audioNotes !== prevAudioRef.current) {
+      state.audioNotes.forEach(note => {
+        const prevNote = prevAudioRef.current.find(n => n.id === note.id);
+        if (note !== prevNote) {
+          dbService.saveAudioNote(note);
+        }
+      });
+      prevAudioRef.current.forEach(note => {
+        if (!state.audioNotes.some(n => n.id === note.id)) {
+          dbService.deleteAudioNote(note.id);
+        }
+      });
+      prevAudioRef.current = state.audioNotes;
+    }
+  }, [state]);
+
+  // ── Derived backlinks index ───────────────────────────────────────────────
+  const backlinks = useMemo(() => deserialiseBacklinks(state.backlinksRaw), [state.backlinksRaw]);
+
+  // ── Navigation helper ─────────────────────────────────────────────────────
+  const navigateTo = useCallback(
+    (pageId: string) => {
+      if (!state.db[pageId]) {
+        const name = pageId
+          .replace(/-/g, ' ')
+          .replace(/\b\w/g, l => l.toUpperCase());
+        dispatch({ type: 'CREATE_PAGE', name, navigate: true });
+      } else {
+        dispatch({ type: 'NAVIGATE', pageId });
+      }
+      dispatch({ type: 'SET_ACTIVE_VIEW', view: 'editor' });
+    },
+    [state.db],
+  );
+
+  // ── getOrCreatePage helper ────────────────────────────────────────────────
+  const getOrCreatePage = useCallback(
+    (name: string): string => {
+      const id = name
+        .toLowerCase()
+        .replace(/\s+/g, '-')
+        .replace(/[^a-z0-9-]/g, '');
+      if (!state.db[id]) {
+        dispatch({ type: 'CREATE_PAGE', name });
+      }
+      return id;
+    },
+    [state.db],
+  );
+
+  const addMedia = useCallback(async (blob: Blob, type: MediaAttachment['type'], name: string) => {
+    const mediaId = `media-${Date.now()}`;
+    const pageId = state.currentPageId;
+    try {
+      const metadata = await dbService.saveMedia(mediaId, blob, type, name);
+      dispatch({ type: 'ADD_MEDIA', pageId, media: metadata });
+      return metadata;
+    } catch (error) {
+      console.error('Failed to save media:', error);
+      throw error;
+    }
+  }, [state.currentPageId]);
+
+  const deleteMedia = useCallback(async (mediaId: string) => {
+    const pageId = state.currentPageId;
+    try {
+      await dbService.deleteMedia(mediaId);
+      dispatch({ type: 'DELETE_MEDIA', pageId, mediaId });
+    } catch (error) {
+      console.error('Failed to delete media:', error);
+    }
+  }, [state.currentPageId]);
+
+  const addAudioNote = useCallback(async (note: AudioNote, blob?: Blob) => {
+    try {
+      await dbService.saveAudioNote(note, blob);
+      dispatch({ type: 'ADD_AUDIO_NOTE', note });
+    } catch (error) {
+      console.error('Failed to save audio note:', error);
+    }
+  }, []);
+
+  const deleteAudioNote = useCallback(async (noteId: string) => {
+    try {
+      await dbService.deleteAudioNote(noteId);
+      dispatch({ type: 'DELETE_AUDIO_NOTE', noteId });
+    } catch (error) {
+      console.error('Failed to delete audio note:', error);
+    }
+  }, []);
+
+  const actions = useMemo(() => ({
+    addMedia,
+    deleteMedia,
+    addAudioNote,
+    deleteAudioNote,
+  }), [addMedia, deleteMedia, addAudioNote, deleteAudioNote]);
 
   return (
-    <DatabaseContext.Provider value={{ state, dispatch, navigateTo, getOrCreatePage }}>
+    <DatabaseContext.Provider value={{ state, dispatch, navigateTo, getOrCreatePage, backlinks, loading, actions }}>
       {children}
     </DatabaseContext.Provider>
   );
 }
+
+// ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useDatabase() {
   const ctx = useContext(DatabaseContext);

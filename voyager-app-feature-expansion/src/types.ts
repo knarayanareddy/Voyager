@@ -13,8 +13,8 @@ export interface Block {
 
 export interface MediaAttachment {
   id: string;
-  type: 'image' | 'video' | 'audio';
-  dataUrl: string;
+  type: 'image' | 'video' | 'audio' | 'drawing';
+  url: string;
   name: string;
   size?: number;
   duration?: number;
@@ -132,7 +132,7 @@ export type ActiveView = 'editor' | 'graph' | 'flashcards' | 'search' | 'setting
 export interface AudioNote {
   id: string;
   name: string;
-  dataUrl: string;
+  url: string;
   duration: number;
   transcription: string;
   transcriptionStatus: 'idle' | 'processing' | 'done' | 'error';
@@ -148,3 +148,11 @@ export interface CameraState {
   isRecording: boolean;
   capturedMedia: MediaAttachment | null;
 }
+
+export interface CardReview {
+  id: string;
+  cardId: string;
+  score: number;
+  reviewedAt: string;
+}
+

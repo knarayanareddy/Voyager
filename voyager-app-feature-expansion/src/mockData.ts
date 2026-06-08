@@ -27,7 +27,7 @@ function makeBlock(content: string, children: Block[] = [], taskStatus: Block['t
   };
 }
 
-function extractRefs(content: string): string[] {
+export function extractRefs(content: string): string[] {
   const refs: string[] = [];
   const wikiLinks = content.match(/\[\[([^\]]+)\]\]/g);
   if (wikiLinks) { wikiLinks.forEach(link => { refs.push(link.slice(2, -2)); }); }
@@ -542,7 +542,7 @@ export function buildInitialAudioNotes(): AudioNote[] {
     {
       id: 'audio-sample-1',
       name: 'Project Voyager brainstorm',
-      dataUrl: '',
+      url: '',
       duration: 45.3,
       transcription: 'Remember to add the camera module to project voyager. The audio recording should capture at 16 kilohertz mono for whisper compatibility. Also need to implement the waveform visualization using the canvas API.',
       transcriptionStatus: 'done',
@@ -555,7 +555,7 @@ export function buildInitialAudioNotes(): AudioNote[] {
     {
       id: 'audio-sample-2',
       name: 'Daily standup notes',
-      dataUrl: '',
+      url: '',
       duration: 23.1,
       transcription: 'Today I worked on the knowledge graph physics simulation and fixed the node repulsion algorithm. Tomorrow planning to focus on the S-Pen drawing canvas integration.',
       transcriptionStatus: 'done',

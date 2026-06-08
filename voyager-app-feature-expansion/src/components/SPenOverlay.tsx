@@ -2,6 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import { X, Pen, Highlighter, Eraser, Edit3, StickyNote, Check, Trash2 } from 'lucide-react';
 import { DrawingStroke } from '../types';
 import { useDatabase } from '../context/DatabaseContext';
+import { dbService } from '../utils/db';
+
 
 interface Props { onClose: () => void; }
 
@@ -96,15 +98,30 @@ export default function SPenOverlay({ onClose }: Props) {
   const saveToJournal = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const dataUrl = canvas.toDataURL('image/png');
     const pageId = state.currentPageId;
     const page = state.db[pageId];
     if (!page) return;
     const lastBlock = page.blocks[page.blocks.length - 1];
-    if (lastBlock) {
-      dispatch({ type: 'UPDATE_BLOCK', pageId, blockId: lastBlock.id, content: lastBlock.content + `\n![S-Pen Drawing](${dataUrl})` });
-    }
-    onClose();
+
+    canvas.toBlob(async (blob) => {
+      if (!blob) return;
+      const mediaId = `media-${Date.now()}`;
+      try {
+        const metadata = await dbService.saveMedia(mediaId, blob, 'drawing', 'SPen_Drawing.png');
+        dispatch({ type: 'ADD_MEDIA', pageId, media: metadata });
+        if (lastBlock) {
+          dispatch({
+            type: 'UPDATE_BLOCK',
+            pageId,
+            blockId: lastBlock.id,
+            content: lastBlock.content + `\n![S-Pen Drawing](${mediaId})`,
+          });
+        }
+      } catch (err) {
+        console.error('Failed to save S-Pen sketch as Blob', err);
+      }
+      onClose();
+    }, 'image/png');
   };
 
   const simulateOCR = () => {

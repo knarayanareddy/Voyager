@@ -1,4 +1,5 @@
 import React from 'react';
+import { useDatabase } from '../context/DatabaseContext';
 
 interface Props {
   content: string;
@@ -7,12 +8,26 @@ interface Props {
 }
 
 export default function MarkdownRenderer({ content, onLinkClick, className = '' }: Props) {
+  const { state } = useDatabase();
+
   const renderInline = (text: string): React.ReactNode[] => {
     const parts: React.ReactNode[] = [];
     let remaining = text;
     let key = 0;
 
     const patterns: [RegExp, (match: string, ...groups: string[]) => React.ReactNode][] = [
+      [/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, url) => {
+        const media = state?.mediaAttachments?.find(m => m.id === url);
+        const resolvedUrl = media ? media.url : url;
+        return (
+          <img
+            key={key++}
+            src={resolvedUrl}
+            alt={alt || 'Image'}
+            className="max-w-full max-h-64 rounded-lg my-1.5 border border-slate-700/50 block shadow-md object-contain"
+          />
+        );
+      }],
       [/\[\[([^\]]+)\]\]/g, (_, p1) => (
         <button
           key={key++}

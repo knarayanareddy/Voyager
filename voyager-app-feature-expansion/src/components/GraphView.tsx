@@ -15,6 +15,7 @@ export default function GraphView() {
   const animRef = useRef<number | null>(null);
   const nodesRef = useRef<GraphNode[]>([]);
   const pausedRef = useRef(false);
+  const tickRef = useRef<() => void>(() => {});
 
   useEffect(() => { pausedRef.current = paused; }, [paused]);
 
@@ -60,7 +61,10 @@ export default function GraphView() {
 
   // Physics loop
   const tick = useCallback(() => {
-    if (pausedRef.current) { animRef.current = requestAnimationFrame(tick); return; }
+    if (pausedRef.current) {
+      animRef.current = requestAnimationFrame(() => tickRef.current());
+      return;
+    }
 
     setNodes(prev => {
       const updated = prev.map(n => ({ ...n }));
@@ -116,13 +120,17 @@ export default function GraphView() {
       return updated;
     });
 
-    animRef.current = requestAnimationFrame(tick);
+    animRef.current = requestAnimationFrame(() => tickRef.current());
   }, [edges, draggingNode]);
 
   useEffect(() => {
-    animRef.current = requestAnimationFrame(tick);
-    return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
+    tickRef.current = tick;
   }, [tick]);
+
+  useEffect(() => {
+    animRef.current = requestAnimationFrame(() => tickRef.current());
+    return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
+  }, []);
 
   // Draw
   useEffect(() => {

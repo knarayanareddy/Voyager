@@ -1,12 +1,14 @@
 {
-  "name": "react-vite-tailwind",
+  "name": "voyager-logseq-simulator",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "lint": "eslint . --ext ts,tsx",
+    "format": "prettier --write ."
   },
   "dependencies": {
     "clsx": "2.1.1",
@@ -21,7 +23,12 @@
     "@types/node": "22.19.17",
     "@types/react": "19.2.7",
     "@types/react-dom": "19.2.3",
+    "@typescript-eslint/eslint-plugin": "^8.61.0",
+    "@typescript-eslint/parser": "^8.61.0",
     "@vitejs/plugin-react": "5.1.1",
+    "eslint": "^8.57.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "prettier": "^3.2.5",
     "tailwindcss": "4.1.17",
     "typescript": "5.9.3",
     "vite": "7.3.2",

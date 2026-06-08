@@ -276,8 +276,8 @@ export default function LogseqEditor({ pageId, onLinkClick }: { pageId?: string;
           <div className="flex gap-2 overflow-x-auto pb-1">
             {page.mediaAttachments!.slice(0, 8).map(m => (
               <div key={m.id} className="shrink-0 w-16 h-16 rounded-lg overflow-hidden bg-slate-800 border border-slate-700">
-                {m.type === 'image' ? (
-                  <img src={m.dataUrl} alt={m.name} className="w-full h-full object-cover" />
+                {m.type === 'image' || m.type === 'drawing' ? (
+                  <img src={m.url} alt={m.name} className="w-full h-full object-cover" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-slate-500 text-[10px]">VID</div>
                 )}
