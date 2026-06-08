@@ -1,0 +1,117 @@
+export type TaskStatus = 'TODO' | 'DOING' | 'DONE' | 'LATER' | 'NOW' | 'CANCELLED' | null;
+
+export interface Block {
+  id: string;
+  content: string;
+  children: Block[];
+  collapsed: boolean;
+  taskStatus: TaskStatus;
+  properties: Record<string, string>;
+  refs: string[];
+  uuid: string;
+}
+
+export interface Page {
+  id: string;
+  name: string;
+  blocks: Block[];
+  isJournal: boolean;
+  createdAt: string;
+  updatedAt: string;
+  properties: Record<string, string>;
+  icon?: string;
+  tags: string[];
+}
+
+export interface GraphNode {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  isJournal: boolean;
+  isCurrent: boolean;
+  connections: number;
+}
+
+export interface GraphEdge {
+  source: string;
+  target: string;
+}
+
+export interface FlashCard {
+  id: string;
+  front: string;
+  back: string[];
+  pageId: string;
+  easeFactor: number;
+  interval: number;
+  nextReview: string;
+  reviewCount: number;
+}
+
+export interface DrawingStroke {
+  tool: 'pen' | 'highlighter' | 'eraser';
+  color: string;
+  width: number;
+  points: { x: number; y: number }[];
+}
+
+export interface StickyNote {
+  id: string;
+  content: string;
+  x: number;
+  y: number;
+  color: string;
+}
+
+export interface DatabaseState {
+  pages: Record<string, Page>;
+  currentPageId: string;
+  sidebarPageId: string | null;
+  recentPages: string[];
+  favorites: string[];
+  tags: Record<string, string[]>;
+}
+
+export interface AppSettings {
+  theme: 'dark' | 'light' | 'system';
+  accentColor: string;
+  fontSize: number;
+  fontFamily: string;
+  showBrackets: boolean;
+  enableSpellCheck: boolean;
+  autoSave: boolean;
+  sidebarOpen: boolean;
+  rightSidebarOpen: boolean;
+  customCSS: string;
+  bezelColor: string;
+  navMode: 'buttons' | 'gesture';
+  batteryLevel: number;
+  charging: boolean;
+}
+
+export interface SearchResult {
+  pageId: string;
+  pageName: string;
+  blockId: string;
+  content: string;
+  isJournal: boolean;
+}
+
+export interface TemplateItem {
+  name: string;
+  content: string;
+  blocks: string[];
+}
+
+export interface Plugin {
+  id: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  icon: string;
+}
+
+export type ActiveView = 'editor' | 'graph' | 'flashcards' | 'search' | 'settings' | 'allPages' | 'todos' | 'whiteboards';
