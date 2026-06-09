@@ -242,7 +242,7 @@ export default function LogseqApp() {
             </button>
           </div>
           <div className="flex-1 overflow-auto">
-            <LogseqEditor pageId={state.sidebarPageId} onLinkClick={(targetName, e) => {
+            <LogseqEditor pageId={state.sidebarPageId} onLinkClick={(targetName) => {
               const targetId = targetName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
               dispatch({ type: 'OPEN_SIDEBAR', pageId: targetId });
             }} />

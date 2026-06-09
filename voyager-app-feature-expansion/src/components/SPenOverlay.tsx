@@ -2,7 +2,6 @@ import { useState, useRef, useEffect } from 'react';
 import { X, Pen, Highlighter, Eraser, Edit3, StickyNote, Check, Trash2 } from 'lucide-react';
 import { DrawingStroke } from '../types';
 import { useDatabase } from '../context/DatabaseContext';
-import { dbService } from '../utils/db';
 
 
 interface Props { onClose: () => void; }
@@ -13,7 +12,7 @@ const COLORS = ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#3b82f6', '#ffffff'
 const WIDTHS = [2, 4, 8];
 
 export default function SPenOverlay({ onClose }: Props) {
-  const { state, dispatch } = useDatabase();
+  const { state, dispatch, actions } = useDatabase();
   const [activeTool, setActiveTool] = useState<SPenTool | null>(null);
   const [drawTool, setDrawTool] = useState<'pen' | 'highlighter' | 'eraser'>('pen');
   const [color, setColor] = useState(COLORS[0]);
@@ -61,6 +60,7 @@ export default function SPenOverlay({ onClose }: Props) {
     ctx.globalCompositeOperation = 'source-over';
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { redraw(); }, [strokes, currentStroke]);
 
   const getPos = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
@@ -105,16 +105,14 @@ export default function SPenOverlay({ onClose }: Props) {
 
     canvas.toBlob(async (blob) => {
       if (!blob) return;
-      const mediaId = `media-${Date.now()}`;
       try {
-        const metadata = await dbService.saveMedia(mediaId, blob, 'drawing', 'SPen_Drawing.png');
-        dispatch({ type: 'ADD_MEDIA', pageId, media: metadata });
+        const metadata = await actions.addMedia(blob, 'drawing', 'SPen_Drawing.png');
         if (lastBlock) {
           dispatch({
             type: 'UPDATE_BLOCK',
             pageId,
             blockId: lastBlock.id,
-            content: lastBlock.content + `\n![S-Pen Drawing](voyager://media/${mediaId})`,
+            content: lastBlock.content + `\n![S-Pen Drawing](voyager://media/${metadata.id})`,
           });
         }
       } catch (err) {

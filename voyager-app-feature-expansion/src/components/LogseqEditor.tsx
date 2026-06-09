@@ -97,7 +97,7 @@ const TASK_DOTS: Record<string, string> = {
 
 function BlockItem({
   block, depth, pageId, onLinkClick
-}: { block: Block; depth: number; pageId: string; onLinkClick: (name: string, e: React.MouseEvent) => void }) {
+}: { block: Block; depth: number; pageId: string; onLinkClick: (name: string) => void }) {
   const { dispatch } = useDatabase();
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(block.content);
@@ -261,7 +261,7 @@ function BlockItem({
   );
 }
 
-export default function LogseqEditor({ pageId, onLinkClick }: { pageId?: string; onLinkClick?: (pageId: string, e: React.MouseEvent) => void }) {
+export default function LogseqEditor({ pageId, onLinkClick }: { pageId?: string; onLinkClick?: (pageId: string) => void }) {
   const { state, dispatch, navigateTo, backlinks } = useDatabase();
   const [showFavStar, setShowFavStar] = useState(false);
   const activePageId = pageId || state.currentPageId;
@@ -269,7 +269,7 @@ export default function LogseqEditor({ pageId, onLinkClick }: { pageId?: string;
 
   const handleLinkClick = useCallback((targetName: string, e: React.MouseEvent) => {
     if (onLinkClick) {
-      onLinkClick(targetName, e);
+      onLinkClick(targetName);
     } else {
       const targetId = targetName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
       if (e.shiftKey) {

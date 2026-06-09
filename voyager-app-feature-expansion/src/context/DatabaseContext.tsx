@@ -502,7 +502,6 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const hydratedRef = useRef(false);
 
-  const prevDbRef = useRef<Record<string, Page>>({});
   const prevSettingsRef = useRef<AppSettings | null>(null);
   const prevFavoritesRef = useRef<string[]>([]);
   const prevAudioRef = useRef<AudioNote[]>([]);
@@ -689,7 +688,7 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
   );
 
   const addMedia = useCallback(async (blob: Blob, type: MediaAttachment['type'], name: string) => {
-    const mediaId = `media-${Date.now()}`;
+    const mediaId = `media-${genUUID()}`;
     const pageId = state.currentPageId;
     try {
       const metadata = await dbService.saveMedia(mediaId, blob, type, name, pageId);

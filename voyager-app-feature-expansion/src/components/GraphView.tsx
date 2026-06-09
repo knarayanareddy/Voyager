@@ -7,8 +7,6 @@ export default function GraphView() {
   const { state, navigateTo } = useDatabase();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [nodes, setNodes] = useState<GraphNode[]>([]);
-  const [edges, setEdges] = useState<GraphEdge[]>([]);
   const [paused, setPaused] = useState(false);
   const [showLabels, setShowLabels] = useState(true);
   const [zoom, setZoom] = useState(1);
@@ -16,6 +14,7 @@ export default function GraphView() {
   const [dims, setDims] = useState({ w: 320, h: 400 });
   const animRef = useRef<number | null>(null);
   const nodesRef = useRef<GraphNode[]>([]);
+  const edgesRef = useRef<GraphEdge[]>([]);
   const pausedRef = useRef(false);
   const tickRef = useRef<() => void>(() => {});
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
@@ -81,86 +80,12 @@ export default function GraphView() {
     });
 
     const nodesWithConns = initialNodes.map(n => ({ ...n, connections: connCount[n.id] || 0 }));
-    setNodes(nodesWithConns);
     nodesRef.current = nodesWithConns;
-    setEdges(initialEdges);
+    edgesRef.current = initialEdges;
   }, [state.db, state.currentPageId, dims.w, dims.h]);
 
-  // Physics loop
-  const tick = useCallback(() => {
-    if (pausedRef.current) {
-      animRef.current = requestAnimationFrame(() => tickRef.current());
-      return;
-    }
-
-    setNodes(prev => {
-      const updated = prev.map(n => ({ ...n }));
-      const W = dims.w, H = dims.h;
-      const cx = W / 2, cy = H / 2;
-
-      updated.forEach(n => {
-        // Gravity toward center
-        n.vx += (cx - n.x) * 0.001;
-        n.vy += (cy - n.y) * 0.001;
-      });
-
-      // Repulsion
-      for (let i = 0; i < updated.length; i++) {
-        for (let j = i + 1; j < updated.length; j++) {
-          const dx = updated[j].x - updated[i].x;
-          const dy = updated[j].y - updated[i].y;
-          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-          const force = Math.min(300 / (dist * dist), 2);
-          updated[i].vx -= (dx / dist) * force;
-          updated[i].vy -= (dy / dist) * force;
-          updated[j].vx += (dx / dist) * force;
-          updated[j].vy += (dy / dist) * force;
-        }
-      }
-
-      // Spring attraction for edges
-      edges.forEach(edge => {
-        const src = updated.find(n => n.id === edge.source);
-        const tgt = updated.find(n => n.id === edge.target);
-        if (!src || !tgt) return;
-        const dx = tgt.x - src.x;
-        const dy = tgt.y - src.y;
-        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        const targetDist = 80;
-        const force = (dist - targetDist) * 0.02;
-        src.vx += (dx / dist) * force;
-        src.vy += (dy / dist) * force;
-        tgt.vx -= (dx / dist) * force;
-        tgt.vy -= (dy / dist) * force;
-      });
-
-      // Damping + integrate
-      updated.forEach(n => {
-        if (n.id === draggingNode) return;
-        n.vx *= 0.85;
-        n.vy *= 0.85;
-        n.x = Math.max(20, Math.min(W - 20, n.x + n.vx));
-        n.y = Math.max(20, Math.min(H - 20, n.y + n.vy));
-      });
-
-      nodesRef.current = updated;
-      return updated;
-    });
-
-    animRef.current = requestAnimationFrame(() => tickRef.current());
-  }, [edges, draggingNode, dims.w, dims.h]);
-
-  useEffect(() => {
-    tickRef.current = tick;
-  }, [tick]);
-
-  useEffect(() => {
-    animRef.current = requestAnimationFrame(() => tickRef.current());
-    return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
-  }, []);
-
   // Draw
-  useEffect(() => {
+  const drawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -173,6 +98,9 @@ export default function GraphView() {
     ctx.translate(offsetX, offsetY);
     ctx.scale(zoom, zoom);
     ctx.translate(-offsetX, -offsetY);
+
+    const nodes = nodesRef.current;
+    const edges = edgesRef.current;
 
     // Edges
     edges.forEach(edge => {
@@ -224,7 +152,78 @@ export default function GraphView() {
     });
 
     ctx.restore();
-  }, [nodes, edges, showLabels, zoom, dims.w, dims.h]);
+  }, [showLabels, zoom]);
+
+  // Physics loop
+  const tick = useCallback(() => {
+    if (pausedRef.current) {
+      drawCanvas();
+      animRef.current = requestAnimationFrame(() => tickRef.current());
+      return;
+    }
+
+    const updated = nodesRef.current;
+    const edges = edgesRef.current;
+    const W = dims.w, H = dims.h;
+    const cx = W / 2, cy = H / 2;
+
+    updated.forEach(n => {
+      // Gravity toward center
+      n.vx += (cx - n.x) * 0.001;
+      n.vy += (cy - n.y) * 0.001;
+    });
+
+    // Repulsion
+    for (let i = 0; i < updated.length; i++) {
+      for (let j = i + 1; j < updated.length; j++) {
+        const dx = updated[j].x - updated[i].x;
+        const dy = updated[j].y - updated[i].y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+        const force = Math.min(300 / (dist * dist), 2);
+        updated[i].vx -= (dx / dist) * force;
+        updated[i].vy -= (dy / dist) * force;
+        updated[j].vx += (dx / dist) * force;
+        updated[j].vy += (dy / dist) * force;
+      }
+    }
+
+    // Spring attraction for edges
+    edges.forEach(edge => {
+      const src = updated.find(n => n.id === edge.source);
+      const tgt = updated.find(n => n.id === edge.target);
+      if (!src || !tgt) return;
+      const dx = tgt.x - src.x;
+      const dy = tgt.y - src.y;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      const targetDist = 80;
+      const force = (dist - targetDist) * 0.02;
+      src.vx += (dx / dist) * force;
+      src.vy += (dy / dist) * force;
+      tgt.vx -= (dx / dist) * force;
+      tgt.vy -= (dy / dist) * force;
+    });
+
+    // Damping + integrate
+    updated.forEach(n => {
+      if (n.id === draggingNode) return;
+      n.vx *= 0.85;
+      n.vy *= 0.85;
+      n.x = Math.max(20, Math.min(W - 20, n.x + n.vx));
+      n.y = Math.max(20, Math.min(H - 20, n.y + n.vy));
+    });
+
+    drawCanvas();
+    animRef.current = requestAnimationFrame(() => tickRef.current());
+  }, [draggingNode, dims.w, dims.h, drawCanvas]);
+
+  useEffect(() => {
+    tickRef.current = tick;
+  }, [tick]);
+
+  useEffect(() => {
+    animRef.current = requestAnimationFrame(() => tickRef.current());
+    return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
+  }, []);
 
   // Helper: extract canvas-space coordinates from a touch event
   const getTouchPos = (e: React.TouchEvent<HTMLCanvasElement>, usedChangedTouches = false) => {
@@ -245,7 +244,7 @@ export default function GraphView() {
     const ax = (mx - cx) / zoom + cx;
     const ay = (my - cy) / zoom + cy;
 
-    for (const n of nodes) {
+    for (const n of nodesRef.current) {
       const r = Math.max(5, 5 + n.connections * 1.5);
       const dx = ax - n.x, dy = ay - n.y;
       if (dx * dx + dy * dy < (r + 8) * (r + 8)) {
@@ -260,14 +259,20 @@ export default function GraphView() {
     const rect = canvasRef.current!.getBoundingClientRect();
     const mx = (e.clientX - rect.left) * (dims.w / rect.width);
     const my = (e.clientY - rect.top) * (dims.h / rect.height);
-    setNodes(prev => prev.map(n => n.id === draggingNode ? { ...n, x: mx, y: my, vx: 0, vy: 0 } : n));
+    const n = nodesRef.current.find(n => n.id === draggingNode);
+    if (n) {
+      n.x = mx;
+      n.y = my;
+      n.vx = 0;
+      n.vy = 0;
+    }
   };
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = canvasRef.current!.getBoundingClientRect();
     const mx = (e.clientX - rect.left) * (dims.w / rect.width);
     const my = (e.clientY - rect.top) * (dims.h / rect.height);
-    for (const n of nodes) {
+    for (const n of nodesRef.current) {
       const r = Math.max(5, 5 + n.connections * 1.5);
       if ((mx - n.x) ** 2 + (my - n.y) ** 2 < (r + 8) ** 2) {
         setDraggingNode(n.id);
@@ -281,7 +286,7 @@ export default function GraphView() {
     e.preventDefault();
     const { x, y } = getTouchPos(e);
     touchStartRef.current = { x, y, time: Date.now() };
-    for (const n of nodes) {
+    for (const n of nodesRef.current) {
       const r = Math.max(5, 5 + n.connections * 1.5);
       if ((x - n.x) ** 2 + (y - n.y) ** 2 < (r + 8) ** 2) {
         setDraggingNode(n.id);
@@ -294,7 +299,13 @@ export default function GraphView() {
     e.preventDefault();
     if (!draggingNode) return;
     const { x, y } = getTouchPos(e);
-    setNodes(prev => prev.map(n => n.id === draggingNode ? { ...n, x, y, vx: 0, vy: 0 } : n));
+    const n = nodesRef.current.find(n => n.id === draggingNode);
+    if (n) {
+      n.x = x;
+      n.y = y;
+      n.vx = 0;
+      n.vy = 0;
+    }
   };
 
   const handleTouchEnd = (e: React.TouchEvent<HTMLCanvasElement>) => {
@@ -314,7 +325,7 @@ export default function GraphView() {
         const cx = W / 2, cy = H / 2;
         const ax = (ex - cx) / zoom + cx;
         const ay = (ey - cy) / zoom + cy;
-        for (const n of nodes) {
+        for (const n of nodesRef.current) {
           const r = Math.max(5, 5 + n.connections * 1.5);
           const dx = ax - n.x, dy = ay - n.y;
           if (dx * dx + dy * dy < (r + 8) * (r + 8)) {
@@ -345,7 +356,7 @@ export default function GraphView() {
         <button onClick={() => setZoom(1)} className="p-1.5 bg-slate-800 rounded-lg text-slate-400 hover:text-white">
           <RotateCcw size={12} />
         </button>
-        <span className="ml-auto text-slate-600 text-[10px] self-center">{nodes.length} nodes · {edges.length} edges</span>
+        <span className="ml-auto text-slate-600 text-[10px] self-center">{Object.keys(state.db).length} nodes</span>
       </div>
 
       <div ref={containerRef} className="flex-1 flex items-center justify-center bg-slate-950">

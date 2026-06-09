@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 
 interface Props {
   content: string;
-  onLinkClick?: (target: string, e: React.MouseEvent) => void;
+  onLinkClick?: (target: string, _e: React.MouseEvent) => void;
   className?: string;
   /** Pre-accumulated multi-line code fence block passed from the parent rendering loop */
   codeBlock?: { language?: string; code: string };
@@ -11,6 +11,7 @@ interface Props {
 
 export default function MarkdownRenderer({ content, onLinkClick, className = '', codeBlock }: Props) {
   const { state } = useDatabase();
+  const mediaById = useMemo(() => new Map(state.mediaAttachments.map(m => [m.id, m])), [state.mediaAttachments]);
 
   const renderInline = (text: string): React.ReactNode[] => {
     const parts: React.ReactNode[] = [];
@@ -18,11 +19,11 @@ export default function MarkdownRenderer({ content, onLinkClick, className = '',
     let key = 0;
 
     const patterns: [RegExp, (match: string, ...groups: string[]) => React.ReactNode][] = [
-      [/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, url) => {
+      [/!\[([^\]]*)\]\(([^)]+)\)/g, (_match, alt, url) => {
         let resolvedUrl = url;
         if (url.startsWith('voyager://media/')) {
           const id = url.replace('voyager://media/', '');
-          const media = state?.mediaAttachments?.find(m => m.id === id);
+          const media = mediaById.get(id);
           resolvedUrl = media ? media.url : url;
         }
         return (
@@ -34,7 +35,7 @@ export default function MarkdownRenderer({ content, onLinkClick, className = '',
           />
         );
       }],
-      [/\[\[([^\]]+)\]\]/g, (_, p1) => (
+      [/\[\[([^\]]+)\]\]/g, (_match, p1) => (
         <button
           key={key++}
           onClick={(e) => onLinkClick?.(p1, e)}
