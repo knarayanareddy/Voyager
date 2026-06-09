@@ -6,23 +6,50 @@ import { Pause, Play, Tag, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 export default function GraphView() {
   const { state, navigateTo } = useDatabase();
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [nodes, setNodes] = useState<GraphNode[]>([]);
   const [edges, setEdges] = useState<GraphEdge[]>([]);
   const [paused, setPaused] = useState(false);
   const [showLabels, setShowLabels] = useState(true);
   const [zoom, setZoom] = useState(1);
   const [draggingNode, setDraggingNode] = useState<string | null>(null);
+  const [dims, setDims] = useState({ w: 320, h: 400 });
   const animRef = useRef<number | null>(null);
   const nodesRef = useRef<GraphNode[]>([]);
   const pausedRef = useRef(false);
   const tickRef = useRef<() => void>(() => {});
+  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
 
   useEffect(() => { pausedRef.current = paused; }, [paused]);
+
+  // Track container dimensions via ResizeObserver
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    let rafId: number | null = null;
+    const observer = new ResizeObserver((entries) => {
+      if (rafId) return; // throttle with rAF
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        const entry = entries[0];
+        if (!entry) return;
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          setDims({ w: Math.round(width), h: Math.round(height) });
+        }
+      });
+    });
+    observer.observe(container);
+    return () => {
+      observer.disconnect();
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, []);
 
   // Build graph from DB
   useEffect(() => {
     const pages = Object.values(state.db);
-    const centerX = 160, centerY = 200;
+    const centerX = dims.w / 2, centerY = dims.h / 2;
     const initialNodes: GraphNode[] = pages.map((page, i) => {
       const angle = (i / pages.length) * Math.PI * 2;
       const radius = 100 + Math.random() * 60;
@@ -57,7 +84,7 @@ export default function GraphView() {
     setNodes(nodesWithConns);
     nodesRef.current = nodesWithConns;
     setEdges(initialEdges);
-  }, [state.db, state.currentPageId]);
+  }, [state.db, state.currentPageId, dims.w, dims.h]);
 
   // Physics loop
   const tick = useCallback(() => {
@@ -68,7 +95,7 @@ export default function GraphView() {
 
     setNodes(prev => {
       const updated = prev.map(n => ({ ...n }));
-      const W = 320, H = 400;
+      const W = dims.w, H = dims.h;
       const cx = W / 2, cy = H / 2;
 
       updated.forEach(n => {
@@ -121,7 +148,7 @@ export default function GraphView() {
     });
 
     animRef.current = requestAnimationFrame(() => tickRef.current());
-  }, [edges, draggingNode]);
+  }, [edges, draggingNode, dims.w, dims.h]);
 
   useEffect(() => {
     tickRef.current = tick;
@@ -197,13 +224,23 @@ export default function GraphView() {
     });
 
     ctx.restore();
-  }, [nodes, edges, showLabels, zoom]);
+  }, [nodes, edges, showLabels, zoom, dims.w, dims.h]);
+
+  // Helper: extract canvas-space coordinates from a touch event
+  const getTouchPos = (e: React.TouchEvent<HTMLCanvasElement>, usedChangedTouches = false) => {
+    const touch = usedChangedTouches ? e.changedTouches[0] : e.touches[0];
+    const rect = canvasRef.current!.getBoundingClientRect();
+    return {
+      x: (touch.clientX - rect.left) * (dims.w / rect.width),
+      y: (touch.clientY - rect.top) * (dims.h / rect.height),
+    };
+  };
 
   const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = canvasRef.current!.getBoundingClientRect();
-    const mx = (e.clientX - rect.left) * (320 / rect.width);
-    const my = (e.clientY - rect.top) * (400 / rect.height);
-    const W = 320, H = 400;
+    const mx = (e.clientX - rect.left) * (dims.w / rect.width);
+    const my = (e.clientY - rect.top) * (dims.h / rect.height);
+    const W = dims.w, H = dims.h;
     const cx = W / 2, cy = H / 2;
     const ax = (mx - cx) / zoom + cx;
     const ay = (my - cy) / zoom + cy;
@@ -221,21 +258,72 @@ export default function GraphView() {
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!draggingNode) return;
     const rect = canvasRef.current!.getBoundingClientRect();
-    const mx = (e.clientX - rect.left) * (320 / rect.width);
-    const my = (e.clientY - rect.top) * (400 / rect.height);
+    const mx = (e.clientX - rect.left) * (dims.w / rect.width);
+    const my = (e.clientY - rect.top) * (dims.h / rect.height);
     setNodes(prev => prev.map(n => n.id === draggingNode ? { ...n, x: mx, y: my, vx: 0, vy: 0 } : n));
   };
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = canvasRef.current!.getBoundingClientRect();
-    const mx = (e.clientX - rect.left) * (320 / rect.width);
-    const my = (e.clientY - rect.top) * (400 / rect.height);
+    const mx = (e.clientX - rect.left) * (dims.w / rect.width);
+    const my = (e.clientY - rect.top) * (dims.h / rect.height);
     for (const n of nodes) {
       const r = Math.max(5, 5 + n.connections * 1.5);
       if ((mx - n.x) ** 2 + (my - n.y) ** 2 < (r + 8) ** 2) {
         setDraggingNode(n.id);
         return;
       }
+    }
+  };
+
+  // Touch handlers — mirror mouse handlers with tap detection
+  const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    const { x, y } = getTouchPos(e);
+    touchStartRef.current = { x, y, time: Date.now() };
+    for (const n of nodes) {
+      const r = Math.max(5, 5 + n.connections * 1.5);
+      if ((x - n.x) ** 2 + (y - n.y) ** 2 < (r + 8) ** 2) {
+        setDraggingNode(n.id);
+        return;
+      }
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    if (!draggingNode) return;
+    const { x, y } = getTouchPos(e);
+    setNodes(prev => prev.map(n => n.id === draggingNode ? { ...n, x, y, vx: 0, vy: 0 } : n));
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    setDraggingNode(null);
+
+    // Detect tap: brief duration and minimal movement
+    if (touchStartRef.current) {
+      const { x: sx, y: sy, time } = touchStartRef.current;
+      const elapsed = Date.now() - time;
+      const { x: ex, y: ey } = getTouchPos(e, true);
+      const moved = Math.sqrt((ex - sx) ** 2 + (ey - sy) ** 2);
+
+      if (elapsed < 300 && moved < 10) {
+        // Treat as a tap/click — select node
+        const W = dims.w, H = dims.h;
+        const cx = W / 2, cy = H / 2;
+        const ax = (ex - cx) / zoom + cx;
+        const ay = (ey - cy) / zoom + cy;
+        for (const n of nodes) {
+          const r = Math.max(5, 5 + n.connections * 1.5);
+          const dx = ax - n.x, dy = ay - n.y;
+          if (dx * dx + dy * dy < (r + 8) * (r + 8)) {
+            navigateTo(n.id);
+            break;
+          }
+        }
+      }
+      touchStartRef.current = null;
     }
   };
 
@@ -260,18 +348,21 @@ export default function GraphView() {
         <span className="ml-auto text-slate-600 text-[10px] self-center">{nodes.length} nodes · {edges.length} edges</span>
       </div>
 
-      <div className="flex-1 flex items-center justify-center bg-slate-950">
+      <div ref={containerRef} className="flex-1 flex items-center justify-center bg-slate-950">
         <canvas
           ref={canvasRef}
-          width={320}
-          height={400}
+          width={dims.w}
+          height={dims.h}
           className="w-full h-full cursor-grab active:cursor-grabbing"
-          style={{ maxWidth: '100%' }}
+          style={{ maxWidth: '100%', touchAction: 'none' }}
           onClick={handleCanvasClick}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={() => setDraggingNode(null)}
           onMouseLeave={() => setDraggingNode(null)}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
         />
       </div>
 

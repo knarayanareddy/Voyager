@@ -486,11 +486,16 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
         }
 
         // Attach media items to their pages in state metadata
+        // Create mutable copies so we never mutate IndexedDB objects in-place
+        const mutablePagesMap: Record<string, Page> = {};
+        for (const [id, page] of Object.entries(pagesMap)) {
+          mutablePagesMap[id] = { ...page, mediaAttachments: [...(page.mediaAttachments || [])] };
+        }
+
         storedMedia.forEach(media => {
           // Find which page owns this media (page ID prefix matches or traverse)
-          Object.values(pagesMap).forEach(page => {
+          Object.values(mutablePagesMap).forEach(page => {
             if (page.blocks.some(b => b.content.includes(media.id))) {
-              if (!page.mediaAttachments) page.mediaAttachments = [];
               if (!page.mediaAttachments.some(m => m.id === media.id)) {
                 page.mediaAttachments.push(media);
               }
@@ -498,10 +503,10 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
           });
         });
 
-        const initialBacklinksRaw = serialiseBacklinks(buildBacklinksIndex(pagesMap));
+        const initialBacklinksRaw = serialiseBacklinks(buildBacklinksIndex(mutablePagesMap));
 
         const hydratedState: DatabaseState = {
-          db: pagesMap,
+          db: mutablePagesMap,
           currentPageId: getTodayJournalId(),
           sidebarPageId: null,
           favorites: storedFavorites.length > 0 ? storedFavorites : ['project-voyager', 'media-studio'],

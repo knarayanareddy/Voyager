@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { format } from 'date-fns';
 import { Menu, Search, Plus, Maximize2, Minimize2, Camera,
          BookOpen, LayoutGrid, Star, CheckSquare, FileText, Settings, Mic, X } from 'lucide-react';
@@ -77,11 +77,14 @@ const NAV_ITEMS: { id: ActiveView; icon: React.ReactNode; label: string }[] = [
 
 export default function LogseqApp() {
   const { state, dispatch, navigateTo } = useDatabase();
-  const [activeView, setActiveView] = useState<ActiveView>('editor');
+  const activeView = state.activeView;
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showSPen, setShowSPen] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [desktopMode, setDesktopMode] = useState(false);
+  const [showNewPageModal, setShowNewPageModal] = useState(false);
+  const [newPageName, setNewPageName] = useState('');
+  const newPageInputRef = useRef<HTMLInputElement>(null);
 
   const currentPage = state.db[state.currentPageId];
 
@@ -95,15 +98,33 @@ export default function LogseqApp() {
   };
 
   const handleNewPage = useCallback(() => {
-    const name = prompt('New page name:');
-    if (name?.trim()) {
-      dispatch({ type: 'CREATE_PAGE', name: name.trim(), navigate: true });
-      setActiveView('editor');
+    setShowNewPageModal(true);
+  }, []);
+
+  const handleCreatePage = useCallback(() => {
+    if (!newPageName.trim()) return;
+    dispatch({ type: 'CREATE_PAGE', name: newPageName.trim(), navigate: true });
+    dispatch({ type: 'SET_ACTIVE_VIEW', view: 'editor' });
+    setShowNewPageModal(false);
+    setNewPageName('');
+  }, [dispatch, newPageName]);
+
+  const handleCancelNewPage = useCallback(() => {
+    setShowNewPageModal(false);
+    setNewPageName('');
+  }, []);
+
+  // Auto-focus the new page input when modal opens
+  useEffect(() => {
+    if (showNewPageModal) {
+      // Small delay to let the animation start, then focus
+      const timer = setTimeout(() => newPageInputRef.current?.focus(), 50);
+      return () => clearTimeout(timer);
     }
-  }, [dispatch]);
+  }, [showNewPageModal]);
 
   const handleSetView = (v: ActiveView) => {
-    setActiveView(v);
+    dispatch({ type: 'SET_ACTIVE_VIEW', view: v });
     if (v === 'editor' && !state.db[state.currentPageId]) {
       navigateTo(state.currentPageId);
     }
@@ -146,7 +167,7 @@ export default function LogseqApp() {
             <Plus size={15} />
           </button>
         )}
-        <button onClick={() => setActiveView('settings')} className="p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-slate-800 transition-colors">
+        <button onClick={() => dispatch({ type: 'SET_ACTIVE_VIEW', view: 'settings' })} className="p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-slate-800 transition-colors">
           <Settings size={13} />
         </button>
       </div>
@@ -216,6 +237,76 @@ export default function LogseqApp() {
       {/* S-Pen overlay */}
       {showSPen && <SPenOverlay onClose={() => setShowSPen(false)} />}
 
+      {/* New Page Modal (glassmorphic) */}
+      {showNewPageModal && (
+        <div
+          className="absolute inset-0 z-50 flex items-center justify-center"
+          style={{ animation: 'modalFadeIn 0.2s ease-out' }}
+        >
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-md"
+            onClick={handleCancelNewPage}
+          />
+          {/* Modal card */}
+          <div
+            className="relative z-10 w-[85%] max-w-sm bg-slate-800/90 border border-slate-600/50 rounded-2xl shadow-2xl p-5"
+            style={{ animation: 'modalScaleIn 0.25s ease-out' }}
+          >
+            {/* Title */}
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                <Plus size={16} className="text-white" />
+              </div>
+              <h2 className="text-white text-sm font-bold tracking-wide">Create New Page</h2>
+            </div>
+
+            {/* Input */}
+            <input
+              ref={newPageInputRef}
+              type="text"
+              value={newPageName}
+              onChange={e => setNewPageName(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') handleCreatePage();
+                if (e.key === 'Escape') handleCancelNewPage();
+              }}
+              placeholder="Page name..."
+              className="w-full px-3.5 py-2.5 bg-slate-900/80 border border-slate-600/40 rounded-xl text-slate-200 text-sm placeholder-slate-500 outline-none focus:border-indigo-500/60 focus:ring-1 focus:ring-indigo-500/30 transition-all"
+            />
+
+            {/* Buttons */}
+            <div className="flex items-center justify-end gap-2 mt-4">
+              <button
+                onClick={handleCancelNewPage}
+                className="px-4 py-2 text-xs font-medium text-slate-400 hover:text-slate-200 rounded-xl hover:bg-slate-700/60 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreatePage}
+                disabled={!newPageName.trim()}
+                className="px-5 py-2 text-xs font-semibold text-white rounded-xl bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-400 hover:to-violet-500 shadow-lg shadow-indigo-500/25 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
+              >
+                Create
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal animations */}
+      <style>{`
+        @keyframes modalFadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes modalScaleIn {
+          from { opacity: 0; transform: scale(0.92) translateY(8px); }
+          to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+      `}</style>
+
       {/* Bottom Navigation */}
       <div className="flex bg-slate-900/95 backdrop-blur border-t border-slate-800 shrink-0 z-20">
         {NAV_ITEMS.map(item => (
@@ -278,7 +369,7 @@ export default function LogseqApp() {
 
       {/* Phone Frame */}
       <div className="relative z-10" style={{ transform: 'scale(var(--phone-scale, 1))' }}>
-        <S23UltraFrame onSPenClick={() => setShowSPen(true)} onCameraClick={() => setActiveView('media')}>
+        <S23UltraFrame onSPenClick={() => setShowSPen(true)} onCameraClick={() => dispatch({ type: 'SET_ACTIVE_VIEW', view: 'media' })}>
           {AppContent}
         </S23UltraFrame>
       </div>

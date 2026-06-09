@@ -4,6 +4,79 @@ import { Block } from '../types';
 import MarkdownRenderer from './MarkdownRenderer';
 import { ChevronRight, ChevronDown, Plus, Trash2, Star, MoreHorizontal } from 'lucide-react';
 
+/** A render item is either a regular block or a fused multi-line code fence */
+type RenderItem =
+  | { type: 'block'; block: Block }
+  | { type: 'codeFence'; id: string; language?: string; code: string };
+
+/**
+ * Pre-processes an array of sibling blocks to detect and group multi-line code fences.
+ * When a block's content starts with ``` (opening fence), subsequent blocks are accumulated
+ * as raw code lines until a closing ``` is found or the blocks are exhausted (unclosed fence).
+ */
+function processBlocksForCodeFences(blocks: Block[]): RenderItem[] {
+  const items: RenderItem[] = [];
+  let i = 0;
+
+  while (i < blocks.length) {
+    const block = blocks[i];
+    const trimmed = block.content.trimStart();
+
+    if (trimmed.startsWith('```')) {
+      // Check if this is a self-closing fence (``` ... ``` on the same line)
+      const afterOpener = trimmed.slice(3);
+      if (afterOpener.includes('```') && afterOpener.indexOf('```') > 0) {
+        // Self-closing single-line fence — render as a normal block (MarkdownRenderer handles it)
+        items.push({ type: 'block', block });
+        i++;
+        continue;
+      }
+
+      // Opening a multi-line code fence
+      const langMatch = afterOpener.match(/^(\w+)/);
+      const language = langMatch ? langMatch[1] : undefined;
+      const firstLineContent = langMatch ? afterOpener.slice(langMatch[0].length) : afterOpener;
+      const codeLines: string[] = [];
+
+      // If there's content after the language identifier on the opening line, include it
+      if (firstLineContent.trim()) {
+        codeLines.push(firstLineContent.trimStart());
+      }
+
+      const fenceStartId = block.id;
+      i++;
+
+      // Accumulate blocks until we find a closing ```
+      while (i < blocks.length) {
+        const nextBlock = blocks[i];
+        const nextTrimmed = nextBlock.content.trimStart();
+
+        if (nextTrimmed.startsWith('```')) {
+          // Closing fence found — any content after ``` on this line is ignored
+          i++;
+          break;
+        }
+
+        codeLines.push(nextBlock.content);
+        i++;
+      }
+
+      // Render the accumulated code block (handles unclosed fences too)
+      items.push({
+        type: 'codeFence',
+        id: `codefence-${fenceStartId}`,
+        language,
+        code: codeLines.join('\n'),
+      });
+    } else {
+      items.push({ type: 'block', block });
+      i++;
+    }
+  }
+
+  return items;
+}
+
 const TASK_COLORS: Record<string, string> = {
   TODO: 'text-slate-400 bg-slate-700/50',
   DOING: 'text-amber-300 bg-amber-900/30 animate-pulse',
@@ -173,9 +246,15 @@ function BlockItem({
       {/* Children */}
       {!block.collapsed && block.children.length > 0 && (
         <div className="pl-4 border-l border-slate-800/60 ml-3">
-          {block.children.map(child => (
-            <BlockItem key={child.id} block={child} depth={depth + 1} pageId={pageId} onLinkClick={onLinkClick} />
-          ))}
+          {processBlocksForCodeFences(block.children).map(item =>
+            item.type === 'block' ? (
+              <BlockItem key={item.block.id} block={item.block} depth={depth + 1} pageId={pageId} onLinkClick={onLinkClick} />
+            ) : (
+              <div key={item.id} className="py-0.5 px-1 -mx-1" style={{ paddingLeft: (depth + 1) > 0 ? 16 : 0 }}>
+                <MarkdownRenderer content="" codeBlock={{ language: item.language, code: item.code }} />
+              </div>
+            )
+          )}
         </div>
       )}
     </div>
@@ -183,7 +262,7 @@ function BlockItem({
 }
 
 export default function LogseqEditor({ pageId, onLinkClick }: { pageId?: string; onLinkClick?: (pageId: string, e: React.MouseEvent) => void }) {
-  const { state, dispatch, navigateTo } = useDatabase();
+  const { state, dispatch, navigateTo, backlinks } = useDatabase();
   const [showFavStar, setShowFavStar] = useState(false);
   const activePageId = pageId || state.currentPageId;
   const page = state.db[activePageId];
@@ -210,9 +289,10 @@ export default function LogseqEditor({ pageId, onLinkClick }: { pageId?: string;
   const isFav = state.favorites.includes(page.id);
 
   // Compute backlinks
-  const backlinks = Object.values(state.db).filter(p =>
-    page && p.id !== page.id && JSON.stringify(p.blocks).includes(`[[${page.name}]]`)
-  );
+  const backlinkPageIds = page ? backlinks.get(page.name) : undefined;
+  const backlinkPages = backlinkPageIds
+    ? Array.from(backlinkPageIds).map(id => state.db[id]).filter(Boolean)
+    : [];
 
   const addBlock = () => {
     if (!page) return;
@@ -257,9 +337,15 @@ export default function LogseqEditor({ pageId, onLinkClick }: { pageId?: string;
 
       {/* Blocks */}
       <div className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
-        {page.blocks.map(block => (
-          <BlockItem key={block.id} block={block} depth={0} pageId={page.id} onLinkClick={handleLinkClick} />
-        ))}
+        {processBlocksForCodeFences(page.blocks).map(item =>
+          item.type === 'block' ? (
+            <BlockItem key={item.block.id} block={item.block} depth={0} pageId={page.id} onLinkClick={handleLinkClick} />
+          ) : (
+            <div key={item.id} className="py-0.5 px-1 -mx-1">
+              <MarkdownRenderer content="" codeBlock={{ language: item.language, code: item.code }} />
+            </div>
+          )
+        )}
 
         <button
           onClick={addBlock}
@@ -288,13 +374,13 @@ export default function LogseqEditor({ pageId, onLinkClick }: { pageId?: string;
       )}
 
       {/* Backlinks */}
-      {backlinks.length > 0 && (
+      {backlinkPages.length > 0 && (
         <div className="px-3 pb-4 border-t border-slate-800/50 shrink-0">
           <p className="text-slate-600 text-[10px] uppercase tracking-wider mt-3 mb-2">
-            🔗 Linked References ({backlinks.length})
+            🔗 Linked References ({backlinkPages.length})
           </p>
           <div className="space-y-2">
-            {backlinks.slice(0, 5).map(p => (
+            {backlinkPages.slice(0, 5).map(p => (
               <button
                 key={p.id}
                 onClick={(e) => handleLinkClick(p.name, e)}

@@ -5,9 +5,11 @@ interface Props {
   content: string;
   onLinkClick?: (target: string, e: React.MouseEvent) => void;
   className?: string;
+  /** Pre-accumulated multi-line code fence block passed from the parent rendering loop */
+  codeBlock?: { language?: string; code: string };
 }
 
-export default function MarkdownRenderer({ content, onLinkClick, className = '' }: Props) {
+export default function MarkdownRenderer({ content, onLinkClick, className = '', codeBlock }: Props) {
   const { state } = useDatabase();
 
   const renderInline = (text: string): React.ReactNode[] => {
@@ -83,9 +85,44 @@ export default function MarkdownRenderer({ content, onLinkClick, className = '' 
     if (text.startsWith('## ')) return <h2 className="text-base font-semibold text-white/90 leading-tight">{renderInline(text.slice(3))}</h2>;
     if (text.startsWith('### ')) return <h3 className="text-sm font-semibold text-white/80 leading-tight">{renderInline(text.slice(4))}</h3>;
     if (text.startsWith('> ')) return <blockquote className="border-l-2 border-indigo-400 pl-2 text-slate-400 italic">{renderInline(text.slice(2))}</blockquote>;
-    if (text.startsWith('```')) return <code className="block bg-slate-800 text-emerald-300 p-2 rounded text-xs font-mono">{text.slice(3)}</code>;
+    if (text.startsWith('```')) {
+      // Single-line code fence: strip opening/closing backticks and render inline code block
+      let codeContent = text.slice(3);
+      // Strip optional closing ``` if present on the same line
+      if (codeContent.endsWith('```')) {
+        codeContent = codeContent.slice(0, -3);
+      }
+      // Strip optional language identifier from the beginning (e.g., ```typescript)
+      const langMatch = codeContent.match(/^(\w+)\s/);
+      if (langMatch) {
+        codeContent = codeContent.slice(langMatch[0].length);
+      }
+      return (
+        <pre className="bg-slate-900 rounded-lg p-3 my-2 overflow-x-auto border border-slate-700/50">
+          <code className="text-emerald-300 text-xs font-mono whitespace-pre">{codeContent}</code>
+        </pre>
+      );
+    }
     return <span className="text-slate-200 leading-relaxed">{renderInline(text)}</span>;
   };
+
+  // If a pre-accumulated code fence block was passed, render it directly
+  if (codeBlock) {
+    return (
+      <span className={`break-words ${className}`}>
+        <pre className="bg-slate-900 rounded-lg p-3 my-2 overflow-x-auto border border-slate-700/50 relative" data-language={codeBlock.language || undefined}>
+          {codeBlock.language && (
+            <span className="absolute top-1.5 right-2 text-[9px] font-mono text-slate-500 bg-slate-800 px-1.5 py-0.5 rounded select-none">
+              {codeBlock.language}
+            </span>
+          )}
+          <code className="text-emerald-300 text-xs font-mono whitespace-pre">
+            {codeBlock.code}
+          </code>
+        </pre>
+      </span>
+    );
+  }
 
   return (
     <span className={`break-words ${className}`}>
