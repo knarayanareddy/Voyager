@@ -963,27 +963,44 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
 
   const renamePage = useCallback(async (pageId: string, newName: string) => {
     const trimmedNewName = newName.trim();
+    if (!trimmedNewName) return;
+
     const newPageId = trimmedNewName
       .toLowerCase()
       .replace(/\s+/g, '-')
       .replace(/[^a-z0-9-]/g, '');
 
     const oldPageExists = !!state.db[pageId];
+    if (!oldPageExists) return;
 
-    if (oldPageExists && newPageId !== pageId) {
+    // Prevent migrating secondary stores to a conflicting id.
+    // (AllPages validates this too, but DatabaseActions must be safe for programmatic callers.)
+    if (newPageId !== pageId && !!state.db[newPageId]) {
+      console.warn('[DatabaseContext] renamePage blocked: target page id already exists', {
+        pageId,
+        newPageId,
+      });
+      return;
+    }
+
+    // Durable behavior: complete DB migrations before dispatching the in-memory rename.
+    // This reduces the "rename then immediate reload/close" window where secondary stores
+    // (media + graph_layout) could be left half-migrated.
+    if (newPageId !== pageId) {
       try {
         await dbService.reassignMediaOwner(pageId, newPageId);
       } catch (err) {
-        console.warn('[DatabaseContext] reassignMediaOwner failed:', err);
+        console.error('[DatabaseContext] reassignMediaOwner failed:', err);
       }
+
       try {
         await dbService.migrateGraphLayoutNodeId('global', pageId, newPageId);
       } catch (err) {
-        console.warn('[DatabaseContext] migrateGraphLayoutNodeId failed:', err);
+        console.error('[DatabaseContext] migrateGraphLayoutNodeId failed:', err);
       }
     }
 
-    dispatch({ type: 'RENAME_PAGE', pageId, newName });
+    dispatch({ type: 'RENAME_PAGE', pageId, newName: trimmedNewName });
   }, [dispatch, state.db]);
 
 

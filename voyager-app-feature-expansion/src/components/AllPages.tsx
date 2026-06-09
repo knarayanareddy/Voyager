@@ -133,12 +133,12 @@ export default function AllPages() {
                       }}
                       onKeyDown={e => {
                         if (e.key === 'Enter') {
-                          handleRenameCommit(page.id);
+                          void handleRenameCommit(page.id);
                         } else if (e.key === 'Escape') {
                           handleRenameCancel();
                         }
                       }}
-                      onBlur={() => handleRenameCommit(page.id)}
+                      onBlur={() => void handleRenameCommit(page.id)}
                       className={`w-full bg-slate-800 text-slate-100 text-sm px-2 py-0.5 rounded outline-none border ${
                         validationError ? 'border-red-500 bg-red-950/20' : 'border-slate-700 focus:border-indigo-500'
                       }`}
