@@ -1,9 +1,10 @@
 import React from 'react';
 import { Image as ImageIcon, Trash2, FileAudio } from 'lucide-react';
+import { DatabaseState, DatabaseActions } from '../../context/DatabaseContext';
 
 interface GalleryViewProps {
-  state: any;
-  actions: any;
+  state: DatabaseState;
+  actions: DatabaseActions;
 }
 
 export const GalleryView: React.FC<GalleryViewProps> = ({ state, actions }) => {

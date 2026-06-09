@@ -2,9 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ShieldAlert, Trash2, RefreshCw, Check } from 'lucide-react';
 import { useCamera } from './useCamera';
 
+import { DatabaseActions } from '../../context/DatabaseContext';
+
 interface CameraViewProps {
   screenOn: boolean;
-  actions: any;
+  actions: DatabaseActions;
 }
 
 export const CameraView: React.FC<CameraViewProps> = ({ screenOn, actions }) => {
@@ -23,11 +25,10 @@ export const CameraView: React.FC<CameraViewProps> = ({ screenOn, actions }) => 
   }, [stream]);
 
   // Clean up camera on unmount or tab switch
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     startCamera();
     return () => stopCamera();
-  }, []);
+  }, [startCamera, stopCamera]);
 
   const capturePhoto = () => {
     if (!videoRef.current) return;

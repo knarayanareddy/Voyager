@@ -14,10 +14,10 @@ import {
   buildInitialAudioNotes,
   DEFAULT_SETTINGS,
   getTodayJournalId,
-  genId,
-  genUUID,
   extractRefs,
+  genId
 } from '../mockData';
+import { genUUID, genMediaId } from '../utils/id';
 import { dbService, initStorage } from '../utils/db';
 import {
   buildBacklinksIndex,
@@ -42,6 +42,14 @@ export interface DatabaseState {
   backlinksRaw: Record<string, string[]>;
   dirtyPageIds: string[];
   reviews: Record<string, import('../types').CardReview>;
+}
+
+export interface DatabaseActions {
+  addMedia: (blob: Blob, type: MediaAttachment['type'], name: string) => Promise<MediaAttachment>;
+  deleteMedia: (mediaId: string) => Promise<void>;
+  addAudioNote: (note: AudioNote, blob?: Blob) => Promise<void>;
+  deleteAudioNote: (noteId: string) => Promise<void>;
+  updateAudioNote: (note: AudioNote) => Promise<void>;
 }
 
 // ─── Action union ────────────────────────────────────────────────────────────
@@ -688,7 +696,7 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
   );
 
   const addMedia = useCallback(async (blob: Blob, type: MediaAttachment['type'], name: string) => {
-    const mediaId = `media-${genUUID()}`;
+    const mediaId = genMediaId();
     const pageId = state.currentPageId;
     try {
       const metadata = await dbService.saveMedia(mediaId, blob, type, name, pageId);
@@ -728,12 +736,22 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const updateAudioNote = useCallback(async (note: AudioNote) => {
+    try {
+      await dbService.saveAudioNote(note);
+      dispatch({ type: 'UPDATE_AUDIO_NOTE', note });
+    } catch (error) {
+      console.error('Failed to update audio note:', error);
+    }
+  }, []);
+
   const actions = useMemo(() => ({
     addMedia,
     deleteMedia,
     addAudioNote,
     deleteAudioNote,
-  }), [addMedia, deleteMedia, addAudioNote, deleteAudioNote]);
+    updateAudioNote,
+  }), [addMedia, deleteMedia, addAudioNote, deleteAudioNote, updateAudioNote]);
 
   return (
     <DatabaseContext.Provider value={{ state, dispatch, navigateTo, getOrCreatePage, backlinks, loading, actions }}>

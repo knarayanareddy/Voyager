@@ -60,6 +60,7 @@ export default function SPenOverlay({ onClose }: Props) {
     ctx.globalCompositeOperation = 'source-over';
   };
 
+  // intentional: capture callbacks without re-binding
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { redraw(); }, [strokes, currentStroke]);
 

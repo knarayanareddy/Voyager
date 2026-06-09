@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { FlashCard, Block } from '../types';
 import { RotateCcw, ChevronLeft, ChevronRight, Trophy } from 'lucide-react';
@@ -42,7 +42,9 @@ export default function Flashcards() {
   const [scores, setScores] = useState<Record<string, number>>({});
   const [started, setStarted] = useState(false);
 
-  const startSession = () => {
+  const [sessionReady, setSessionReady] = useState(false);
+
+  const startSession = useCallback(() => {
     const dueCards: FlashCard[] = [];
     const now = new Date();
     Object.values(state.db).forEach(page => {
@@ -62,12 +64,14 @@ export default function Flashcards() {
     setCards(dueCards.sort(() => Math.random() - 0.5));
     setIndex(0); setFlipped(false); setDone(false); setScores({});
     setStarted(true);
-  };
+  }, [state.db, state.reviews]);
 
   useEffect(() => {
-    startSession();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (!sessionReady && Object.keys(state.reviews).length >= 0) {
+      startSession();
+      setSessionReady(true);
+    }
+  }, [sessionReady, state.reviews, startSession]);
 
   const current = cards[index];
 

@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Mic, Square, Play, Pause, Trash2, Sparkles, FileAudio, Check } from 'lucide-react';
-import { genUUID } from '../../mockData';
+import { DatabaseActions } from '../../context/DatabaseContext';
+import { genAudioId } from '../../utils/id';
 
 interface AudioRecorderProps {
   screenOn: boolean;
-  actions: any;
+  actions: DatabaseActions;
 }
 
 export const AudioRecorder: React.FC<AudioRecorderProps> = ({ screenOn, actions }) => {
@@ -91,7 +92,7 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ screenOn, actions 
   };
 
   // Necessary to collect last chunks
-  const stopRecording = () => {
+  const stopRecording = useCallback(() => {
     if (mediaRecorder && recording) {
       mediaRecorder.stop();
       setRecording(false);
@@ -101,15 +102,14 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ screenOn, actions 
         setAudioStream(null);
       }
     }
-  };
+  }, [mediaRecorder, recording, audioStream]);
 
   // Stop recording on screen off
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!screenOn && recording) {
       stopRecording();
     }
-  }, [screenOn, recording]);
+  }, [screenOn, recording, stopRecording]);
 
   const togglePlayback = () => {
     if (!audioRef.current || !playbackUrl) return;
@@ -137,7 +137,7 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ screenOn, actions 
   const saveAudioNote = async () => {
     if (!playbackBlob) return;
 
-    const noteId = `audio-${genUUID()}`;
+    const noteId = genAudioId();
     const name = `Audio Note ${new Date().toLocaleDateString()}`;
 
     // Save audio note metadata and blob to IndexedDB via actions

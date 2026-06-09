@@ -7,7 +7,7 @@ export function genId(): string {
   return `block-${blockIdCounter++}`;
 }
 
-export function genUUID(): string {
+function genUUID(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
     const r = Math.random() * 16 | 0;
     return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
@@ -29,9 +29,14 @@ function makeBlock(content: string, children: Block[] = [], taskStatus: Block['t
 
 export function extractRefs(content: string): string[] {
   const refs: string[] = [];
-  const wikiLinks = content.match(/\[\[([^\]]+)\]\]/g);
+  
+  const cleanContent = content
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/`[^`]*`/g, '');
+
+  const wikiLinks = cleanContent.match(/\[\[([^\]]+)\]\]/g);
   if (wikiLinks) { wikiLinks.forEach(link => { refs.push(link.slice(2, -2)); }); }
-  const tags = content.match(/#(\w[\w-]*)/g);
+  const tags = cleanContent.match(/#(\w[\w-]*)/g);
   if (tags) { tags.forEach(tag => refs.push(tag.slice(1))); }
   return refs;
 }

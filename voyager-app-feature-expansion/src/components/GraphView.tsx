@@ -1,7 +1,28 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
-import { GraphNode, GraphEdge } from '../types';
+import { GraphNode, GraphEdge, Page, Block } from '../types';
 import { Pause, Play, Tag, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { extractRefs } from '../mockData';
+
+export function extractEdgesFromPage(
+  page: Pick<Page, 'blocks'>,
+  pageIdByName: Map<string, string>
+): string[] {
+  const refs = new Set<string>();
+
+  function walkBlocks(blocks: Pick<Block, 'content' | 'children'>[]) {
+    for (const block of blocks) {
+      for (const ref of extractRefs(block.content)) {
+        const targetId = pageIdByName.get(ref.toLowerCase());
+        if (targetId) refs.add(targetId);
+      }
+      if (block.children?.length) walkBlocks(block.children);
+    }
+  }
+
+  walkBlocks(page.blocks);
+  return [...refs];
+}
 
 export default function GraphView() {
   const { state, navigateTo } = useDatabase();
@@ -64,14 +85,15 @@ export default function GraphView() {
       };
     });
 
+    const pageIdByName = new Map(
+      pages.map(p => [p.name.toLowerCase(), p.id])
+    );
     const initialEdges: GraphEdge[] = [];
     const connCount: Record<string, number> = {};
     pages.forEach(page => {
-      const allContent = JSON.stringify(page.blocks);
-      const wikiLinks = allContent.match(/\[\[([^\]]+)\]\]/g) || [];
-      wikiLinks.forEach(link => {
-        const target = link.slice(2, -2).toLowerCase().replace(/\s+/g, '-');
-        if (state.db[target] && target !== page.id) {
+      const edges = extractEdgesFromPage(page, pageIdByName);
+      edges.forEach(target => {
+        if (target !== page.id) {
           initialEdges.push({ source: page.id, target });
           connCount[page.id] = (connCount[page.id] || 0) + 1;
           connCount[target] = (connCount[target] || 0) + 1;
@@ -102,10 +124,12 @@ export default function GraphView() {
     const nodes = nodesRef.current;
     const edges = edgesRef.current;
 
+    const nodeById = new Map(nodes.map(n => [n.id, n]));
+
     // Edges
     edges.forEach(edge => {
-      const src = nodes.find(n => n.id === edge.source);
-      const tgt = nodes.find(n => n.id === edge.target);
+      const src = nodeById.get(edge.source);
+      const tgt = nodeById.get(edge.target);
       if (!src || !tgt) return;
       ctx.beginPath();
       ctx.moveTo(src.x, src.y);
@@ -187,10 +211,12 @@ export default function GraphView() {
       }
     }
 
+    const nodeById = new Map(updated.map(n => [n.id, n]));
+
     // Spring attraction for edges
     edges.forEach(edge => {
-      const src = updated.find(n => n.id === edge.source);
-      const tgt = updated.find(n => n.id === edge.target);
+      const src = nodeById.get(edge.source);
+      const tgt = nodeById.get(edge.target);
       if (!src || !tgt) return;
       const dx = tgt.x - src.x;
       const dy = tgt.y - src.y;

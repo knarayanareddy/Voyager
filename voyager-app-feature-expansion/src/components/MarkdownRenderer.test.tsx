@@ -71,4 +71,28 @@ describe('MarkdownRenderer', () => {
     expect(img?.getAttribute('src')).toBe('blob:mock-url-xyz');
     expect(img?.getAttribute('alt')).toBe('Alt text');
   });
+
+  it('renders images and handles legacy raw IDs', () => {
+    const mockMedia = [
+      { id: 'abc1234', url: 'blob:legacy-url', type: 'image', name: 'test.png', createdAt: '' }
+    ];
+    const { container } = renderWithContext(
+      <MarkdownRenderer content="![Alt text](abc1234)" />,
+      { mediaAttachments: mockMedia }
+    );
+    
+    const img = container.querySelector('img');
+    expect(img).not.toBeNull();
+    expect(img?.getAttribute('src')).toBe('blob:legacy-url');
+  });
+
+  it('renders images and handles external urls gracefully', () => {
+    const { container } = renderWithContext(
+      <MarkdownRenderer content="![Alt text](https://example.com/img.png)" />
+    );
+    
+    const img = container.querySelector('img');
+    expect(img).not.toBeNull();
+    expect(img?.getAttribute('src')).toBe('https://example.com/img.png');
+  });
 });

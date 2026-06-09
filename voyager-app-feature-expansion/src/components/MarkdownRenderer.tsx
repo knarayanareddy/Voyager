@@ -25,12 +25,17 @@ export default function MarkdownRenderer({ content, onLinkClick, className = '',
           const id = url.replace('voyager://media/', '');
           const media = mediaById.get(id);
           resolvedUrl = media ? media.url : url;
+        } else if (mediaById.has(url)) {
+          resolvedUrl = mediaById.get(url)!.url;
+        } else {
+          resolvedUrl = url;
         }
         return (
           <img
             key={key++}
             src={resolvedUrl}
             alt={alt || 'Image'}
+            loading="lazy"
             className="max-w-full max-h-64 rounded-lg my-1.5 border border-slate-700/50 block shadow-md object-contain"
           />
         );
