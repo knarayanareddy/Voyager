@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { Camera, Mic, Image as ImageIcon } from 'lucide-react';
 import { CameraView } from './media/CameraView';
@@ -9,7 +9,7 @@ export { useCamera } from './media/useCamera';
 
 export default function MediaStudio() {
   const { state, actions } = useDatabase();
-  const { settings } = state;
+
   const [activeTab, setActiveTab] = useState<'camera' | 'audio' | 'gallery'>('camera');
 
   return (
@@ -44,8 +44,8 @@ export default function MediaStudio() {
 
       {/* Tab Content */}
       <div className="flex-1 overflow-hidden relative flex flex-col">
-        {activeTab === 'camera' && <CameraView screenOn={settings.screenOn} actions={actions} />}
-        {activeTab === 'audio' && <AudioRecorder screenOn={settings.screenOn} actions={actions} />}
+        {activeTab === 'camera' && <CameraView screenOn={true} actions={actions} />}
+        {activeTab === 'audio' && <AudioRecorder screenOn={true} actions={actions} />}
         {activeTab === 'gallery' && <GalleryView state={state} actions={actions} />}
       </div>
     </div>

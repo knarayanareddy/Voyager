@@ -550,8 +550,8 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
             if (!mutablePagesMap[media.ownerPageId].mediaAttachments) {
               mutablePagesMap[media.ownerPageId].mediaAttachments = [];
             }
-            if (!mutablePagesMap[media.ownerPageId].mediaAttachments.some(m => m.id === media.id)) {
-              mutablePagesMap[media.ownerPageId].mediaAttachments.push(media);
+            if (!mutablePagesMap[media.ownerPageId].mediaAttachments!.some(m => m.id === media.id)) {
+              mutablePagesMap[media.ownerPageId].mediaAttachments!.push(media);
             }
           }
         });

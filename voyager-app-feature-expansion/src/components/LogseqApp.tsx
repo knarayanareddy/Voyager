@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { format } from 'date-fns';
 import { Menu, Search, Plus, Maximize2, Minimize2, Camera,
          BookOpen, LayoutGrid, Star, CheckSquare, FileText, Settings, Mic, X } from 'lucide-react';
@@ -20,7 +20,7 @@ function SearchOverlay({ onClose }: { onClose: () => void }) {
   const [query, setQuery] = useState('');
 
   const allBlocks = useMemo(() => {
-    const list = [];
+    const list: {pageId: string, pageName: string, blockId: string, content: string, isJournal: boolean}[] = [];
     const traverse = (blocks: any[], page: any) => {
       for (const b of blocks) {
         list.push({ pageId: page.id, pageName: page.name, blockId: b.id, content: b.content, isJournal: page.isJournal });
@@ -59,7 +59,7 @@ function SearchOverlay({ onClose }: { onClose: () => void }) {
       </div>
       <div className="flex-1 overflow-y-auto p-2">
         {results.length > 0 ? (
-          results.map((r, i) => (
+          results.map((r: any, i: number) => (
             <button
               key={i}
               onClick={() => { navigateTo(r.pageId); onClose(); }}
@@ -242,7 +242,7 @@ export default function LogseqApp() {
             </button>
           </div>
           <div className="flex-1 overflow-auto">
-            <LogseqEditor pageId={state.sidebarPageId} onLinkClick={(targetName) => {
+            <LogseqEditor pageId={state.sidebarPageId} onLinkClick={(targetName, _e) => {
               const targetId = targetName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
               dispatch({ type: 'OPEN_SIDEBAR', pageId: targetId });
             }} />
