@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- Mock context values require loose typing */
 import React from 'react';
 import { render } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
@@ -14,7 +15,7 @@ const renderWithContext = (ui: React.ReactElement, stateOverrides = {}) => {
     backlinks: new Map(),
     loading: false,
     actions: {},
-  });
+  } as any);
   
   return render(ui);
 };
@@ -94,5 +95,16 @@ describe('MarkdownRenderer', () => {
     const img = container.querySelector('img');
     expect(img).not.toBeNull();
     expect(img?.getAttribute('src')).toBe('https://example.com/img.png');
+  });
+
+  it('does not render wikilinks inside inline code as clickable', () => {
+    const { queryByRole } = renderWithContext(<MarkdownRenderer content="`[[Not A Link]]`" />);
+    expect(queryByRole('button', { name: /Not A Link/i })).toBeNull();
+  });
+
+  it('still renders wikilinks outside code as clickable', () => {
+    const { getByRole, queryByRole } = renderWithContext(<MarkdownRenderer content="[[Real Link]] and `[[Fake]]`" />);
+    expect(getByRole('button', { name: /Real Link/i })).toBeDefined();
+    expect(queryByRole('button', { name: /Fake/i })).toBeNull();
   });
 });

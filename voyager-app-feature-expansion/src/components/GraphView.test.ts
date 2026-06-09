@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- Test mock objects require loose typing */
 import { describe, it, expect } from 'vitest';
 import { extractEdgesFromPage } from './GraphView';
 

@@ -14,9 +14,10 @@ import {
   buildInitialAudioNotes,
   DEFAULT_SETTINGS,
   getTodayJournalId,
-  genId
+  genId,
+  formatJournalTitle
 } from '../mockData';
-import { extractRefs } from '../lib/parsing';
+import { extractRefs, rewriteRefs } from '../lib/parsing';
 import { genUUID, genMediaId } from '../utils/id';
 import { dbService, initStorage, revokeMediaUrl } from '../utils/db';
 import {
@@ -55,6 +56,7 @@ export interface DatabaseActions {
   addAudioNote: (note: AudioNote, blob?: Blob) => Promise<void>;
   deleteAudioNote: (noteId: string) => Promise<void>;
   updateAudioNote: (note: AudioNote) => Promise<void>;
+  renamePage: (pageId: string, newName: string) => void;
 }
 
 // ─── Action union ────────────────────────────────────────────────────────────
@@ -83,7 +85,8 @@ export type Action =
   | { type: 'SET_ACTIVE_VIEW'; view: ActiveView }
   | { type: 'SAVE_REVIEW'; review: import('../types').CardReview }
   | { type: 'HYDRATE'; state: DatabaseState }
-  | { type: 'CLEAR_DIRTY_PAGES'; pageIds: string[] };
+  | { type: 'CLEAR_DIRTY_PAGES'; pageIds: string[] }
+  | { type: 'RENAME_PAGE'; pageId: string; newName: string };
 
 // ─── Block tree helpers ───────────────────────────────────────────────────────
 
@@ -176,6 +179,21 @@ const TASK_CYCLE: Block['taskStatus'][] = ['TODO', 'DOING', 'DONE', 'LATER', 'NO
 
 // ─── Reducer ─────────────────────────────────────────────────────────────────
 
+function rewriteBlockRefs(blocks: Block[], oldName: string, newName: string): Block[] {
+  return blocks.map(b => {
+    const newContent = rewriteRefs(b.content, oldName, newName);
+    const updatedBlock: Block = {
+      ...b,
+      content: newContent,
+      refs: extractRefs(newContent),
+    };
+    if (b.children && b.children.length > 0) {
+      updatedBlock.children = rewriteBlockRefs(b.children, oldName, newName);
+    }
+    return updatedBlock;
+  });
+}
+
 function baseReducer(state: DatabaseState, action: Action): DatabaseState {
   switch (action.type) {
     case 'HYDRATE':
@@ -187,11 +205,91 @@ function baseReducer(state: DatabaseState, action: Action): DatabaseState {
         dirtyPageIds: state.dirtyPageIds.filter(id => !action.pageIds.includes(id))
       };
 
+    case 'RENAME_PAGE': {
+      const { pageId, newName } = action;
+      const trimmedNewName = newName.trim();
+      const oldPage = state.db[pageId];
+
+      if (!oldPage || !trimmedNewName) return state;
+
+      const newPageId = trimmedNewName
+        .toLowerCase()
+        .replace(/\s+/g, '-')
+        .replace(/[^a-z0-9-]/g, '');
+
+      // Guard: check if another page already has the newPageId (and it's not the same page being renamed, e.g. case change)
+      if (newPageId !== pageId && state.db[newPageId]) {
+        return state;
+      }
+
+      // Create copies and perform renames/references rewriting
+      const newDb: Record<string, Page> = {};
+
+      for (const [id, page] of Object.entries(state.db)) {
+        if (id === pageId) {
+          // The page itself
+          const updatedBlocks = rewriteBlockRefs(page.blocks, oldPage.name, trimmedNewName);
+          if (updatedBlocks.length > 0 && updatedBlocks[0].content.toLowerCase().startsWith(`# ${oldPage.name.toLowerCase()}`)) {
+            updatedBlocks[0] = {
+              ...updatedBlocks[0],
+              content: `# ${trimmedNewName}`,
+              refs: extractRefs(`# ${trimmedNewName}`),
+            };
+          }
+          newDb[newPageId] = {
+            ...page,
+            id: newPageId,
+            name: trimmedNewName,
+            blocks: updatedBlocks,
+            updatedAt: new Date().toISOString(),
+          };
+        } else {
+          // Other pages
+          const updatedBlocks = rewriteBlockRefs(page.blocks, oldPage.name, trimmedNewName);
+          const blockChanged = JSON.stringify(updatedBlocks) !== JSON.stringify(page.blocks);
+          
+          if (blockChanged) {
+            newDb[id] = {
+              ...page,
+              blocks: updatedBlocks,
+              updatedAt: new Date().toISOString(),
+            };
+          } else {
+            newDb[id] = page;
+          }
+        }
+      }
+
+      // Update current and sidebar page IDs
+      let nextCurrentPageId = state.currentPageId;
+      if (state.currentPageId === pageId) {
+        nextCurrentPageId = newPageId;
+      }
+      let nextSidebarPageId = state.sidebarPageId;
+      if (state.sidebarPageId === pageId) {
+        nextSidebarPageId = newPageId;
+      }
+
+      // Update favorites
+      const nextFavorites = state.favorites.map(id => id === pageId ? newPageId : id);
+
+      // Rebuild the backlinks index from scratch
+      const nextBacklinksRaw = serialiseBacklinks(buildBacklinksIndex(newDb));
+
+      return {
+        ...state,
+        db: newDb,
+        currentPageId: nextCurrentPageId,
+        sidebarPageId: nextSidebarPageId,
+        favorites: nextFavorites,
+        backlinksRaw: nextBacklinksRaw,
+      };
+    }
+
     case 'NAVIGATE':
       return { 
         ...state, 
         currentPageId: action.pageId,
-        settings: { ...state.settings, lastOpenPageId: action.pageId }
       };
 
     case 'SET_ACTIVE_VIEW': {
@@ -450,7 +548,17 @@ function baseReducer(state: DatabaseState, action: Action): DatabaseState {
 }
 
 function reducer(state: DatabaseState, action: Action): DatabaseState {
-  const nextState = baseReducer(state, action);
+  let nextState = baseReducer(state, action);
+  
+  if (nextState.currentPageId !== state.currentPageId) {
+    nextState = {
+      ...nextState,
+      settings: {
+        ...nextState.settings,
+        lastOpenedPageId: nextState.currentPageId
+      }
+    };
+  }
   
   if (action.type !== 'CLEAR_DIRTY_PAGES' && action.type !== 'HYDRATE' && nextState.db !== state.db) {
     const changedIds = new Set<string>(nextState.dirtyPageIds || []);
@@ -503,7 +611,7 @@ interface DatabaseContextType {
   getOrCreatePage: (name: string) => string;
   backlinks: BacklinksIndex;
   loading: boolean;
-  actions: any;
+  actions: DatabaseActions;
 }
 
 const DatabaseContext = createContext<DatabaseContextType | null>(null);
@@ -564,16 +672,55 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
           }
         });
 
+        const todayJournalId = getTodayJournalId();
+        if (!mutablePagesMap[todayJournalId]) {
+          const dateStr = todayJournalId.replace('journal-', '');
+          let journalTitle = dateStr;
+          try {
+            journalTitle = formatJournalTitle(dateStr);
+          } catch (e) {
+            console.error('formatJournalTitle failed', e);
+          }
+          const newJournalPage: Page = {
+            id: todayJournalId,
+            name: journalTitle,
+            blocks: [{
+              id: genId(),
+              uuid: genUUID(),
+              content: `# ${journalTitle}`,
+              children: [],
+              collapsed: false,
+              taskStatus: null,
+              properties: {},
+              refs: [],
+            }],
+            isJournal: true,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            properties: {},
+            tags: [],
+            mediaAttachments: [],
+          };
+          mutablePagesMap[todayJournalId] = newJournalPage;
+          await dbService.savePage(newJournalPage);
+        }
+
         const initialBacklinksRaw = serialiseBacklinks(buildBacklinksIndex(mutablePagesMap));
 
-        const initialPageId = storedSettings.lastOpenPageId || getTodayJournalId();
+        let initialPageId = todayJournalId;
+        if (storedSettings.alwaysOpenJournal === false && storedSettings.lastOpenedPageId) {
+          const lastId = storedSettings.lastOpenedPageId;
+          if (mutablePagesMap[lastId]) {
+            initialPageId = lastId;
+          }
+        }
 
         const reviewsMap: Record<string, import('../types').CardReview> = {};
         storedReviews.forEach(r => reviewsMap[r.id] = r);
 
         const hydratedState: DatabaseState = {
           db: mutablePagesMap,
-          currentPageId: mutablePagesMap[initialPageId] ? initialPageId : getTodayJournalId(),
+          currentPageId: initialPageId,
           sidebarPageId: null,
           favorites: storedFavorites.length > 0 ? storedFavorites : ['project-voyager', 'media-studio'],
           settings: storedSettings,
@@ -595,6 +742,9 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
     };
 
     initData();
+    return () => {
+      dbService.close();
+    };
   }, []);
 
   // ── Auto-save on state change (Incremental) ─────────────────────────
@@ -602,60 +752,65 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
     if (!hydratedRef.current) return;
 
     const performSave = async () => {
-      // 1. Sync pages incrementally using the dirty queue (O(k))
-      if (state.dirtyPageIds.length > 0) {
-        const pagesToSave = [...state.dirtyPageIds];
-        dispatch({ type: 'CLEAR_DIRTY_PAGES', pageIds: pagesToSave });
-        
-        // Sequentially write to avoid unbounded concurrent IDB writes
-        for (const id of pagesToSave) {
-          const page = state.db[id];
-          if (page) {
-            await dbService.savePage(page);
-          } else {
-            await dbService.deletePage(id);
+      try {
+        // 1. Sync pages incrementally using the dirty queue (O(k))
+        if (state.dirtyPageIds.length > 0) {
+          const pagesToSave = [...state.dirtyPageIds];
+          dispatch({ type: 'CLEAR_DIRTY_PAGES', pageIds: pagesToSave });
+          
+          // Sequentially write to avoid unbounded concurrent IDB writes
+          for (const id of pagesToSave) {
+            const page = state.db[id];
+            if (page) {
+              await dbService.savePage(page);
+            } else {
+              await dbService.deletePage(id);
+            }
           }
         }
+
+        // 2. Sync settings
+        if (state.settings !== prevSettingsRef.current) {
+          await dbService.saveSettings(state.settings);
+          prevSettingsRef.current = state.settings;
+        }
+
+        // 3. Sync favorites
+        if (state.favorites !== prevFavoritesRef.current) {
+          await dbService.saveFavorites(state.favorites);
+          prevFavoritesRef.current = state.favorites;
+        }
+
+        // 4. Sync audio notes metadata
+        if (state.audioNotes !== prevAudioRef.current) {
+          for (const note of state.audioNotes) {
+            const prevNote = prevAudioRef.current.find(n => n.id === note.id);
+            if (note !== prevNote) {
+              await dbService.saveAudioNote(note);
+            }
+          }
+          for (const note of prevAudioRef.current) {
+            if (!state.audioNotes.some(n => n.id === note.id)) {
+              await dbService.deleteAudioNote(note.id);
+            }
+          }
+          prevAudioRef.current = state.audioNotes;
+        }
+
+        // 5. Sync reviews
+        if (state.reviews !== prevReviewsRef.current) {
+          for (const review of Object.values(state.reviews)) {
+            const prevReview = prevReviewsRef.current[review.id];
+            if (review !== prevReview) {
+              await dbService.saveReview(review);
+            }
+          }
+          prevReviewsRef.current = state.reviews;
+        }
+      } catch (error) {
+        // Suppress errors if database is closed/unmounted
+        console.warn('[DatabaseContext] Auto-save failed (expected during cleanup/unmount):', error);
       }
-
-      // 2. Sync settings
-    if (state.settings !== prevSettingsRef.current) {
-      dbService.saveSettings(state.settings);
-      prevSettingsRef.current = state.settings;
-    }
-
-    // 3. Sync favorites
-    if (state.favorites !== prevFavoritesRef.current) {
-      dbService.saveFavorites(state.favorites);
-      prevFavoritesRef.current = state.favorites;
-    }
-
-    // 4. Sync audio notes metadata
-    if (state.audioNotes !== prevAudioRef.current) {
-      state.audioNotes.forEach(note => {
-        const prevNote = prevAudioRef.current.find(n => n.id === note.id);
-        if (note !== prevNote) {
-          dbService.saveAudioNote(note);
-        }
-      });
-      prevAudioRef.current.forEach(note => {
-        if (!state.audioNotes.some(n => n.id === note.id)) {
-          dbService.deleteAudioNote(note.id);
-        }
-      });
-      prevAudioRef.current = state.audioNotes;
-    }
-
-    // 5. Sync reviews
-    if (state.reviews !== prevReviewsRef.current) {
-      Object.values(state.reviews).forEach(review => {
-        const prevReview = prevReviewsRef.current[review.id];
-        if (review !== prevReview) {
-          dbService.saveReview(review);
-        }
-      });
-      prevReviewsRef.current = state.reviews;
-    }
     };
 
     performSave();
@@ -767,13 +922,18 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const renamePage = useCallback((pageId: string, newName: string) => {
+    dispatch({ type: 'RENAME_PAGE', pageId, newName });
+  }, []);
+
   const actions = useMemo(() => ({
     addMedia,
     deleteMedia,
     addAudioNote,
     deleteAudioNote,
     updateAudioNote,
-  }), [addMedia, deleteMedia, addAudioNote, deleteAudioNote, updateAudioNote]);
+    renamePage,
+  }), [addMedia, deleteMedia, addAudioNote, deleteAudioNote, updateAudioNote, renamePage]);
 
   return (
     <DatabaseContext.Provider value={{ state, dispatch, navigateTo, getOrCreatePage, backlinks, loading, actions }}>

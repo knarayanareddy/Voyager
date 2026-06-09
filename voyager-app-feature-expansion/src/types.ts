@@ -102,7 +102,8 @@ export interface AppSettings {
   navMode: 'buttons' | 'gesture';
   batteryLevel: number;
   charging: boolean;
-  lastOpenPageId?: string;
+  lastOpenedPageId?: string | null;
+  alwaysOpenJournal: boolean;
 }
 
 export interface SearchResult {

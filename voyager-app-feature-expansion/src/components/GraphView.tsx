@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { GraphNode, GraphEdge, Page, Block } from '../types';
 import { Pause, Play, Tag, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 import { extractRefs } from '../lib/parsing';
+import { dbService } from '../utils/db';
 
 export function extractEdgesFromPage(
   page: Pick<Page, 'blocks'>,
@@ -76,45 +77,76 @@ export default function GraphView() {
     };
   }, []);
 
-  // Build graph from DB
-  useEffect(() => {
-    const pages = Object.values(state.db);
-    const centerX = dims.w / 2, centerY = dims.h / 2;
-    const initialNodes: GraphNode[] = pages.map((page, i) => {
-      const angle = (i / pages.length) * Math.PI * 2;
-      const radius = 100 + Math.random() * 60;
-      return {
-        id: page.id,
-        label: page.name,
-        x: centerX + Math.cos(angle) * radius,
-        y: centerY + Math.sin(angle) * radius,
-        vx: 0, vy: 0,
-        isJournal: page.isJournal,
-        isCurrent: page.id === state.currentPageId,
-        connections: 0,
-      };
-    });
+  // Build graph from DB and restore layout
+  const [layoutLoaded, setLayoutLoaded] = useState(false);
+  const layoutId = useMemo(() => Object.keys(state.db).sort().join(','), [state.db]);
+  const lastSavedPositionsRef = useRef<string>('');
 
-    const pageIdByName = new Map(
-      pages.map(p => [p.name.toLowerCase(), p.id])
-    );
-    const initialEdges: GraphEdge[] = [];
-    const connCount: Record<string, number> = {};
-    pages.forEach(page => {
-      const edges = extractEdgesFromPage(page, pageIdByName);
-      edges.forEach(target => {
-        if (target !== page.id) {
-          initialEdges.push({ source: page.id, target });
-          connCount[page.id] = (connCount[page.id] || 0) + 1;
-          connCount[target] = (connCount[target] || 0) + 1;
+  useEffect(() => {
+    let active = true;
+    setLayoutLoaded(false);
+    
+    dbService.getGraphLayout(layoutId).then(savedPositions => {
+      if (!active) return;
+
+      const pages = Object.values(state.db);
+      const centerX = dims.w / 2, centerY = dims.h / 2;
+
+      const initialNodes: GraphNode[] = pages.map((page, i) => {
+        const saved = savedPositions ? savedPositions[page.id] : null;
+        if (saved) {
+          return {
+            id: page.id,
+            label: page.name,
+            x: saved.x,
+            y: saved.y,
+            vx: 0, vy: 0,
+            isJournal: page.isJournal,
+            isCurrent: page.id === state.currentPageId,
+            connections: 0,
+          };
+        } else {
+          const angle = (i / pages.length) * Math.PI * 2;
+          const radius = 100 + Math.random() * 60;
+          return {
+            id: page.id,
+            label: page.name,
+            x: centerX + Math.cos(angle) * radius,
+            y: centerY + Math.sin(angle) * radius,
+            vx: 0, vy: 0,
+            isJournal: page.isJournal,
+            isCurrent: page.id === state.currentPageId,
+            connections: 0,
+          };
         }
       });
+
+      const pageIdByName = new Map(
+        pages.map(p => [p.name.toLowerCase(), p.id])
+      );
+      const initialEdges: GraphEdge[] = [];
+      const connCount: Record<string, number> = {};
+      pages.forEach(page => {
+        const edges = extractEdgesFromPage(page, pageIdByName);
+        edges.forEach(target => {
+          if (target !== page.id) {
+            initialEdges.push({ source: page.id, target });
+            connCount[page.id] = (connCount[page.id] || 0) + 1;
+            connCount[target] = (connCount[target] || 0) + 1;
+          }
+        });
+      });
+
+      const nodesWithConns = initialNodes.map(n => ({ ...n, connections: connCount[n.id] || 0 }));
+      nodesRef.current = nodesWithConns;
+      edgesRef.current = initialEdges;
+      setLayoutLoaded(true);
     });
 
-    const nodesWithConns = initialNodes.map(n => ({ ...n, connections: connCount[n.id] || 0 }));
-    nodesRef.current = nodesWithConns;
-    edgesRef.current = initialEdges;
-  }, [state.db, state.currentPageId, dims.w, dims.h]);
+    return () => {
+      active = false;
+    };
+  }, [layoutId, state.db, state.currentPageId, dims.w, dims.h]);
 
   // Draw
   const drawCanvas = useCallback(() => {
@@ -190,7 +222,7 @@ export default function GraphView() {
 
   // Physics loop
   const tick = useCallback(() => {
-    if (pausedRef.current) {
+    if (pausedRef.current || !layoutLoaded) {
       drawCanvas();
       animRef.current = requestAnimationFrame(() => tickRef.current());
       return;
@@ -240,17 +272,36 @@ export default function GraphView() {
     });
 
     // Damping + integrate
+    let maxSpeed = 0;
     updated.forEach(n => {
       if (n.id === draggingNode) return;
       n.vx *= 0.85;
       n.vy *= 0.85;
       n.x = Math.max(20, Math.min(W - 20, n.x + n.vx));
       n.y = Math.max(20, Math.min(H - 20, n.y + n.vy));
+
+      const speed = Math.sqrt(n.vx * n.vx + n.vy * n.vy);
+      if (speed > maxSpeed) {
+        maxSpeed = speed;
+      }
     });
+
+    // Save layout on stabilization
+    if (maxSpeed < 0.1 && layoutLoaded) {
+      const positions: Record<string, { x: number; y: number }> = {};
+      updated.forEach(n => {
+        positions[n.id] = { x: Math.round(n.x), y: Math.round(n.y) };
+      });
+      const positionsStr = JSON.stringify(positions);
+      if (positionsStr !== lastSavedPositionsRef.current) {
+        lastSavedPositionsRef.current = positionsStr;
+        dbService.saveGraphLayout(layoutId, positions);
+      }
+    }
 
     drawCanvas();
     animRef.current = requestAnimationFrame(() => tickRef.current());
-  }, [draggingNode, dims.w, dims.h, drawCanvas]);
+  }, [draggingNode, dims.w, dims.h, drawCanvas, layoutLoaded, layoutId]);
 
   useEffect(() => {
     tickRef.current = tick;

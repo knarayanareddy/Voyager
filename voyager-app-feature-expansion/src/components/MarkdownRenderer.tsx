@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
+import { stripCodeFences } from '../lib/parsing';
 
 interface Props {
   content: string;
@@ -14,8 +15,10 @@ export default function MarkdownRenderer({ content, onLinkClick, className = '',
   const mediaById = useMemo(() => new Map(state.mediaAttachments.map(m => [m.id, m])), [state.mediaAttachments]);
 
   const renderInline = (text: string): React.ReactNode[] => {
+    const cleanText = stripCodeFences(text);
     const parts: React.ReactNode[] = [];
     let remaining = text;
+    let remainingClean = cleanText;
     let key = 0;
 
     const patterns: [RegExp, (match: string, ...groups: string[]) => React.ReactNode][] = [
@@ -67,7 +70,7 @@ export default function MarkdownRenderer({ content, onLinkClick, className = '',
 
       for (const [pattern, renderer] of patterns) {
         pattern.lastIndex = 0;
-        const m = pattern.exec(remaining);
+        const m = pattern.exec(remainingClean);
         if (m && (earliest === -1 || m.index < earliest)) {
           earliest = m.index;
           earliestMatch = m;
@@ -85,6 +88,7 @@ export default function MarkdownRenderer({ content, onLinkClick, className = '',
       }
       parts.push(earliestRenderer(earliestMatch[0], ...earliestMatch.slice(1)));
       remaining = remaining.slice(earliest + earliestMatch[0].length);
+      remainingClean = remainingClean.slice(earliest + earliestMatch[0].length);
     }
 
     return parts;

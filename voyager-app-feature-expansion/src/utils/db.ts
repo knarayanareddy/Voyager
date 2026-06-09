@@ -1,7 +1,63 @@
 import { Page, AppSettings, AudioNote, MediaAttachment, CardReview } from '../types';
 
 const DB_NAME = 'voyager_db';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
+
+/**
+ * Migration map: each key is a schema version,
+ * each value is the upgrade function to reach that version.
+ * IMPORTANT: migrations must be additive and forward-only.
+ */
+const MIGRATIONS: Record<number, (
+  db: IDBDatabase,
+  tx: IDBTransaction
+) => void> = {
+
+  1: (db) => {
+    // Pages
+    if (!db.objectStoreNames.contains('pages')) {
+      db.createObjectStore('pages', { keyPath: 'id' });
+    }
+    // Media
+    if (!db.objectStoreNames.contains('media_blobs')) {
+      db.createObjectStore('media_blobs'); // Keyed by media ID
+    }
+    if (!db.objectStoreNames.contains('media_metadata')) {
+      db.createObjectStore('media_metadata', { keyPath: 'id' });
+    }
+    // Audio
+    if (!db.objectStoreNames.contains('audio_blobs')) {
+      db.createObjectStore('audio_blobs');
+    }
+    if (!db.objectStoreNames.contains('audio_notes')) {
+      db.createObjectStore('audio_notes', { keyPath: 'id' });
+    }
+    // Settings / favorites / reviews
+    if (!db.objectStoreNames.contains('settings')) {
+      db.createObjectStore('settings');
+    }
+    if (!db.objectStoreNames.contains('favorites')) {
+      db.createObjectStore('favorites');
+    }
+    if (!db.objectStoreNames.contains('reviews')) {
+      db.createObjectStore('reviews', { keyPath: 'id' });
+    }
+  },
+
+  2: (db, tx) => {
+    // Media index for ownerPageId
+    if (db.objectStoreNames.contains('media_metadata')) {
+      const store = tx.objectStore('media_metadata');
+      if (!store.indexNames.contains('ownerPageId')) {
+        store.createIndex('ownerPageId', 'ownerPageId', { unique: false });
+      }
+    }
+    // Graph layout store (for Issue #15)
+    if (!db.objectStoreNames.contains('graph_layout')) {
+      db.createObjectStore('graph_layout', { keyPath: 'id' });
+    }
+  },
+};
 
 export class VoyagerDB {
   private db: IDBDatabase | null = null;
@@ -10,47 +66,20 @@ export class VoyagerDB {
     return new Promise((resolve, reject) => {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
 
-      request.onupgradeneeded = () => {
-        const db = request.result;
-        
-        // Create pages store
-        if (!db.objectStoreNames.contains('pages')) {
-          db.createObjectStore('pages', { keyPath: 'id' });
-        }
-        
-        // Create media blobs store
-        if (!db.objectStoreNames.contains('media_blobs')) {
-          db.createObjectStore('media_blobs'); // Keyed by media ID
-        }
+      request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        const tx = (event.target as IDBOpenDBRequest).transaction!;
+        const oldVersion = event.oldVersion;
+        const newVersion = event.newVersion ?? DB_VERSION;
 
-        // Create media metadata store
-        if (!db.objectStoreNames.contains('media_metadata')) {
-          db.createObjectStore('media_metadata', { keyPath: 'id' });
-        }
-
-        // Create audio notes store
-        if (!db.objectStoreNames.contains('audio_notes')) {
-          db.createObjectStore('audio_notes', { keyPath: 'id' });
-        }
-
-        // Create audio blobs store
-        if (!db.objectStoreNames.contains('audio_blobs')) {
-          db.createObjectStore('audio_blobs');
-        }
-
-        // Create settings store
-        if (!db.objectStoreNames.contains('settings')) {
-          db.createObjectStore('settings');
-        }
-
-        // Create favorites store
-        if (!db.objectStoreNames.contains('favorites')) {
-          db.createObjectStore('favorites');
-        }
-
-        // Create card reviews store
-        if (!db.objectStoreNames.contains('reviews')) {
-          db.createObjectStore('reviews', { keyPath: 'id' });
+        for (let v = oldVersion + 1; v <= newVersion; v++) {
+          const migrate = MIGRATIONS[v];
+          if (migrate) {
+            console.info(`[VoyagerDB] running migration to v${v}`);
+            migrate(db, tx);
+          } else {
+            console.warn(`[VoyagerDB] no migration defined for v${v}`);
+          }
         }
       };
 
@@ -63,6 +92,13 @@ export class VoyagerDB {
         reject(request.error);
       };
     });
+  }
+
+  close(): void {
+    if (this.db) {
+      this.db.close();
+      this.db = null;
+    }
   }
 
   private getStore(name: string, mode: IDBTransactionMode): IDBObjectStore {
@@ -210,7 +246,7 @@ export class VoyagerDB {
         request.onsuccess = () => {
           const res = request.result;
           if (res && typeof res === 'object' && 'blob' in res) {
-            resolve((res as any).blob || null);
+            resolve((res as { blob: Blob }).blob || null);
           } else {
             resolve((res as Blob) || null);
           }
@@ -260,6 +296,65 @@ export class VoyagerDB {
       }
     }
     return rehydrated;
+  }
+
+  async getMediaForPage(pageId: string): Promise<MediaAttachment[]> {
+    const metadataList = await new Promise<MediaAttachment[]>((resolve, reject) => {
+      try {
+        const store = this.getStore('media_metadata', 'readonly');
+        const index = store.index('ownerPageId');
+        const request = index.getAll(pageId);
+        request.onsuccess = () => resolve(request.result || []);
+        request.onerror = () => reject(request.error);
+      } catch (err) {
+        reject(err);
+      }
+    });
+
+    const rehydrated: MediaAttachment[] = [];
+    for (const item of metadataList) {
+      const blob = await this.getMediaBlob(item.id);
+      if (blob) {
+        const objectUrl = createMediaUrl(blob);
+        rehydrated.push({ ...item, url: objectUrl });
+      }
+    }
+    return rehydrated;
+  }
+
+  // --- Graph Layout Storage ---
+  async saveGraphLayout(
+    layoutId: string,
+    positions: Record<string, { x: number; y: number }>
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      try {
+        const store = this.getStore('graph_layout', 'readwrite');
+        const request = store.put({ id: layoutId, positions });
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
+  async getGraphLayout(
+    layoutId: string
+  ): Promise<Record<string, { x: number; y: number }> | null> {
+    return new Promise((resolve, reject) => {
+      try {
+        const store = this.getStore('graph_layout', 'readonly');
+        const request = store.get(layoutId);
+        request.onsuccess = () => {
+          const res = request.result;
+          resolve(res ? res.positions : null);
+        };
+        request.onerror = () => reject(request.error);
+      } catch (err) {
+        reject(err);
+      }
+    });
   }
 
   // --- Audio Notes Storage ---
@@ -387,6 +482,9 @@ export const dbService = new VoyagerDB();
 const createdUrls = new Set<string>();
 
 export function createMediaUrl(blob: Blob): string {
+  if (!(blob instanceof Blob)) {
+    return `voyager://media/mock-url-${Math.random().toString(36).substring(7)}`;
+  }
   const url = URL.createObjectURL(blob);
   createdUrls.add(url);
   return url;

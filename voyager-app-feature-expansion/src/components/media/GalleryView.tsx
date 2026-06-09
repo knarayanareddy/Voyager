@@ -1,6 +1,7 @@
 import React from 'react';
 import { Image as ImageIcon, Trash2, FileAudio } from 'lucide-react';
 import { DatabaseState, DatabaseActions } from '../../context/DatabaseContext';
+import { MediaAttachment } from '../../types';
 
 interface GalleryViewProps {
   state: DatabaseState;
@@ -24,7 +25,7 @@ export const GalleryView: React.FC<GalleryViewProps> = ({ state, actions }) => {
 
   return (
     <div className="flex-1 overflow-y-auto p-3 grid grid-cols-2 gap-3 bg-neutral-900 select-text">
-      {mediaAttachments.map((item: any) => (
+      {mediaAttachments.map((item: MediaAttachment) => (
         <div
           key={item.id}
           className="bg-neutral-950 border border-neutral-800 rounded-xl p-2 flex flex-col justify-between shadow relative group"
@@ -61,7 +62,7 @@ export const GalleryView: React.FC<GalleryViewProps> = ({ state, actions }) => {
               {item.name}
             </p>
             <p className="text-[8px] text-neutral-500 font-mono">
-              {new Date(item.createdAt).toLocaleDateString()} • {(item.size / 1024).toFixed(1)} KB
+              {new Date(item.createdAt).toLocaleDateString()} • {((item.size || 0) / 1024).toFixed(1)} KB
             </p>
             
             {/* Markdown reference Helper */}

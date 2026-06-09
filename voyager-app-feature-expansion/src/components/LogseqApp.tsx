@@ -3,7 +3,7 @@ import { format } from 'date-fns';
 import { Menu, Search, Plus, Maximize2, Minimize2, Camera,
          BookOpen, LayoutGrid, Star, CheckSquare, FileText, Settings, Mic, X } from 'lucide-react';
 import { useDatabase } from '../context/DatabaseContext';
-import { ActiveView } from '../types';
+import { ActiveView, Block, Page, SearchResult } from '../types';
 import S23UltraFrame from './S23UltraFrame';
 import LogseqEditor from './LogseqEditor';
 import GraphView from './GraphView';
@@ -20,8 +20,8 @@ function SearchOverlay({ onClose }: { onClose: () => void }) {
   const [query, setQuery] = useState('');
 
   const allBlocks = useMemo(() => {
-    const list: {pageId: string, pageName: string, blockId: string, content: string, isJournal: boolean}[] = [];
-    const traverse = (blocks: any[], page: any) => {
+    const list: SearchResult[] = [];
+    const traverse = (blocks: Block[], page: Page) => {
       for (const b of blocks) {
         list.push({ pageId: page.id, pageName: page.name, blockId: b.id, content: b.content, isJournal: page.isJournal });
         if (b.children.length) traverse(b.children, page);
@@ -59,7 +59,7 @@ function SearchOverlay({ onClose }: { onClose: () => void }) {
       </div>
       <div className="flex-1 overflow-y-auto p-2">
         {results.length > 0 ? (
-          results.map((r: any, i: number) => (
+          results.map((r: SearchResult, i: number) => (
             <button
               key={i}
               onClick={() => { navigateTo(r.pageId); onClose(); }}

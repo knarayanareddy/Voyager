@@ -101,6 +101,12 @@ export default function SettingsView() {
                 <div className={`w-4 h-4 rounded-full bg-white transition-transform m-0.5 ${settings.showBrackets ? 'translate-x-5' : ''}`} />
               </button>
             </div>
+            <div className="flex items-center justify-between">
+              <span className="text-slate-400 text-xs">Open Journal on Launch</span>
+              <button onClick={() => update({ alwaysOpenJournal: !settings.alwaysOpenJournal })} className={`w-10 h-5 rounded-full transition-colors ${settings.alwaysOpenJournal ? 'bg-indigo-600' : 'bg-slate-700'}`}>
+                <div className={`w-4 h-4 rounded-full bg-white transition-transform m-0.5 ${settings.alwaysOpenJournal ? 'translate-x-5' : ''}`} />
+              </button>
+            </div>
           </div>
         </div>
 

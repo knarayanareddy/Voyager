@@ -21,6 +21,29 @@ describe('genUUID', () => {
     const unique = new Set(ids);
     expect(unique.size).toBe(100);
   });
+
+  it('falls back to Math.random approach when crypto is undefined', () => {
+    const originalCrypto = globalThis.crypto;
+    // Force fallback path
+    Object.defineProperty(globalThis, 'crypto', {
+      value: undefined,
+      configurable: true,
+      writable: true,
+    });
+    try {
+      const id = genUUID();
+      expect(id).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+      );
+    } finally {
+      // Restore
+      Object.defineProperty(globalThis, 'crypto', {
+        value: originalCrypto,
+        configurable: true,
+        writable: true,
+      });
+    }
+  });
 });
 
 describe('prefixed ID helpers', () => {

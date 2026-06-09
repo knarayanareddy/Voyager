@@ -587,4 +587,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   navMode: 'buttons',
   batteryLevel: 82,
   charging: false,
+  alwaysOpenJournal: true,
+  lastOpenedPageId: null,
 };
