@@ -1,6 +1,6 @@
 import { useDatabase } from '../context/DatabaseContext';
 import { format } from 'date-fns';
-import { Home, Search, Star, Calendar, FileText, Plus, Settings, BookOpen, Camera } from 'lucide-react';
+import { Home, Search, Star, Calendar, FileText, Plus, Settings, BookOpen, Camera, Globe } from 'lucide-react';
 import { ActiveView } from '../types';
 
 interface Props {
@@ -22,6 +22,7 @@ export default function LeftSidebar({ activeView, onSetView, onClose, onNewPage 
     { id: 'todos', icon: <Search size={14} />, label: 'Tasks' },
     { id: 'allPages', icon: <FileText size={14} />, label: 'All Pages' },
     { id: 'media', icon: <Camera size={14} />, label: 'Media Studio' },
+    { id: 'browser', icon: <Globe size={14} />, label: 'Browser' },
     { id: 'settings', icon: <Settings size={14} />, label: 'Settings' },
   ];
 

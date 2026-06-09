@@ -1,7 +1,7 @@
-import { Page, AppSettings, AudioNote, MediaAttachment, CardReview } from '../types';
+import { Page, AppSettings, AudioNote, MediaAttachment, CardReview, BrowserHistoryEntry, BrowserBookmark, WebClip } from '../types';
 
 const DB_NAME = 'voyager_db';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 /**
  * Migration map: each key is a schema version,
@@ -55,6 +55,30 @@ const MIGRATIONS: Record<number, (
     // Graph layout store (for Issue #15)
     if (!db.objectStoreNames.contains('graph_layout')) {
       db.createObjectStore('graph_layout', { keyPath: 'id' });
+    }
+  },
+
+  3: (db, _tx) => {
+    // History
+    if (!db.objectStoreNames.contains('browser_history')) {
+      const store = db.createObjectStore('browser_history', { keyPath: 'id' });
+      store.createIndex('visitedAt', 'visitedAt', { unique: false });
+      store.createIndex('url', 'url', { unique: false });
+    }
+
+    // Bookmarks
+    if (!db.objectStoreNames.contains('browser_bookmarks')) {
+      const store = db.createObjectStore('browser_bookmarks', { keyPath: 'id' });
+      store.createIndex('createdAt', 'createdAt', { unique: false });
+      store.createIndex('url', 'url', { unique: true });
+    }
+
+    // Clips metadata
+    if (!db.objectStoreNames.contains('web_clips')) {
+      const store = db.createObjectStore('web_clips', { keyPath: 'id' });
+      store.createIndex('createdAt', 'createdAt', { unique: false });
+      store.createIndex('url', 'url', { unique: false });
+      store.createIndex('pageId', 'pageId', { unique: false });
     }
   },
 };
@@ -507,6 +531,136 @@ export class VoyagerDB {
         const store = this.getStore('reviews', 'readonly');
         const request = store.getAll();
         request.onsuccess = () => resolve(request.result || []);
+        request.onerror = () => reject(request.error);
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
+  // --- Browser History Storage ---
+  async addHistoryEntry(entry: BrowserHistoryEntry): Promise<void> {
+    return new Promise((resolve, reject) => {
+      try {
+        const store = this.getStore('browser_history', 'readwrite');
+        const request = store.put(entry);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
+  async getHistory(limit = 500): Promise<BrowserHistoryEntry[]> {
+    return new Promise((resolve, reject) => {
+      try {
+        const store = this.getStore('browser_history', 'readonly');
+        const index = store.index('visitedAt');
+        const request = index.openCursor(null, 'prev'); // sort descending (latest first)
+        const results: BrowserHistoryEntry[] = [];
+        request.onsuccess = () => {
+          const cursor = request.result;
+          if (cursor && results.length < limit) {
+            results.push(cursor.value);
+            cursor.continue();
+          } else {
+            resolve(results);
+          }
+        };
+        request.onerror = () => reject(request.error);
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
+  async clearHistory(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      try {
+        const store = this.getStore('browser_history', 'readwrite');
+        const request = store.clear();
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
+  // --- Bookmarks Storage ---
+  async addBookmark(bm: BrowserBookmark): Promise<void> {
+    return new Promise((resolve, reject) => {
+      try {
+        const store = this.getStore('browser_bookmarks', 'readwrite');
+        const request = store.put(bm);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
+  async getBookmarks(): Promise<BrowserBookmark[]> {
+    return new Promise((resolve, reject) => {
+      try {
+        const store = this.getStore('browser_bookmarks', 'readonly');
+        const request = store.getAll();
+        request.onsuccess = () => resolve(request.result || []);
+        request.onerror = () => reject(request.error);
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
+  async deleteBookmark(id: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      try {
+        const store = this.getStore('browser_bookmarks', 'readwrite');
+        const request = store.delete(id);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
+  // --- Web Clips Storage ---
+  async saveClip(clip: WebClip): Promise<void> {
+    return new Promise((resolve, reject) => {
+      try {
+        const store = this.getStore('web_clips', 'readwrite');
+        const request = store.put(clip);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
+  async getClips(): Promise<WebClip[]> {
+    return new Promise((resolve, reject) => {
+      try {
+        const store = this.getStore('web_clips', 'readonly');
+        const request = store.getAll();
+        request.onsuccess = () => resolve(request.result || []);
+        request.onerror = () => reject(request.error);
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }
+
+  async deleteClip(id: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      try {
+        const store = this.getStore('web_clips', 'readwrite');
+        const request = store.delete(id);
+        request.onsuccess = () => resolve();
         request.onerror = () => reject(request.error);
       } catch (err) {
         reject(err);

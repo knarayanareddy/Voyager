@@ -589,4 +589,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   charging: false,
   alwaysOpenJournal: true,
   lastOpenedPageId: null,
+  browserPersistHistory: false,
+  browserSandboxMode: 'strict',
+  browserSearchEngine: 'duckduckgo',
+  browserCustomSearchUrl: '',
 };

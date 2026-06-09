@@ -4,12 +4,13 @@ import { useDatabase } from '../context/DatabaseContext';
 interface Props {
   content: string;
   onLinkClick?: (target: string, _e: React.MouseEvent) => void;
+  onExternalLinkClick?: (url: string) => void;
   className?: string;
   /** Pre-accumulated multi-line code fence block passed from the parent rendering loop */
   codeBlock?: { language?: string; code: string };
 }
 
-export default function MarkdownRenderer({ content, onLinkClick, className = '', codeBlock }: Props) {
+export default function MarkdownRenderer({ content, onLinkClick, onExternalLinkClick, className = '', codeBlock }: Props) {
   const { state } = useDatabase();
   const mediaById = useMemo(() => new Map(state.mediaAttachments.map(m => [m.id, m])), [state.mediaAttachments]);
 
@@ -64,6 +65,16 @@ export default function MarkdownRenderer({ content, onLinkClick, className = '',
           />
         );
       }],
+      [/\bhttps?:\/\/[^\s)\]>"]+/g, (url) => (
+        <button
+          key={key++}
+          onClick={() => onExternalLinkClick ? onExternalLinkClick(url) : window.open(url, '_blank', 'noopener,noreferrer')}
+          className="text-sky-400 hover:text-sky-300 hover:underline font-medium transition-colors break-all"
+          title={url}
+        >
+          🌐 {url.length > 50 ? url.slice(0, 47) + '…' : url}
+        </button>
+      )],
       [/\[\[([^\]]+)\]\]/g, (_match, p1) => (
         <button
           key={key++}

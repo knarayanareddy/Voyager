@@ -14,6 +14,8 @@ import SettingsView from './SettingsView';
 import LeftSidebar from './LeftSidebar';
 import SPenOverlay from './SPenOverlay';
 import MediaStudio from './MediaStudio';
+import BrowserView from './BrowserView';
+import { BrowserProvider, useBrowser } from '../context/BrowserContext';
 
 function SearchOverlay({ onClose }: { onClose: () => void }) {
   const { state, navigateTo } = useDatabase();
@@ -91,8 +93,24 @@ const NAV_ITEMS: { id: ActiveView; icon: React.ReactNode; label: string }[] = [
   { id: 'media', icon: <Camera size={16} />, label: 'Media' },
 ];
 
-export default function LogseqApp() {
+/**
+ * Inner helper component that has access to BrowserProvider context.
+ * Exposes a stable callback for opening external URLs in the built-in browser.
+ */
+function useExternalLinkHandler() {
+  const { navigate } = useBrowser();
+  const { dispatch } = useDatabase();
+
+  return useCallback((url: string) => {
+    // Switch to browser view, then navigate the active tab
+    dispatch({ type: 'SET_ACTIVE_VIEW', view: 'browser' });
+    navigate(url);
+  }, [dispatch, navigate]);
+}
+
+function LogseqAppInner() {
   const { state, dispatch, navigateTo } = useDatabase();
+  const handleExternalLink = useExternalLinkHandler();
   const activeView = state.activeView;
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showSPen, setShowSPen] = useState(false);
@@ -168,6 +186,7 @@ export default function LogseqApp() {
           {activeView === 'allPages' && <span className="text-white text-sm font-semibold">📋 Pages</span>}
           {activeView === 'settings' && <span className="text-white text-sm font-semibold">⚙️ Settings</span>}
           {activeView === 'media' && <span className="text-white text-sm font-semibold">🎬 Media Studio</span>}
+          {activeView === 'browser' && <span className="text-white text-sm font-semibold">🌐 Browser</span>}
         </div>
 
         {/* Header actions */}
@@ -208,20 +227,24 @@ export default function LogseqApp() {
 
       {/* Main content */}
       <div className="flex-1 overflow-hidden relative">
-        {activeView === 'editor' && <LogseqEditor onLinkClick={(targetName, e) => {
-          const targetId = targetName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-          if (e.shiftKey) {
-            dispatch({ type: 'OPEN_SIDEBAR', pageId: targetId });
-          } else {
-            navigateTo(targetId);
-          }
-        }} />}
+        {activeView === 'editor' && <LogseqEditor
+          onLinkClick={(targetName, e) => {
+            const targetId = targetName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+            if (e.shiftKey) {
+              dispatch({ type: 'OPEN_SIDEBAR', pageId: targetId });
+            } else {
+              navigateTo(targetId);
+            }
+          }}
+          onExternalLinkClick={handleExternalLink}
+        />}
         {activeView === 'graph' && <GraphView />}
         {activeView === 'flashcards' && <Flashcards />}
         {activeView === 'todos' && <TodosView />}
         {activeView === 'allPages' && <AllPages />}
         {activeView === 'settings' && <SettingsView />}
         {activeView === 'media' && <MediaStudio />}
+        {activeView === 'browser' && <BrowserView />}
       </div>
 
       {/* Right sidebar (split pane) */}
@@ -242,10 +265,14 @@ export default function LogseqApp() {
             </button>
           </div>
           <div className="flex-1 overflow-auto">
-            <LogseqEditor pageId={state.sidebarPageId} onLinkClick={(targetName, _e) => {
-              const targetId = targetName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-              dispatch({ type: 'OPEN_SIDEBAR', pageId: targetId });
-            }} />
+            <LogseqEditor
+              pageId={state.sidebarPageId}
+              onLinkClick={(targetName, _e) => {
+                const targetId = targetName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+                dispatch({ type: 'OPEN_SIDEBAR', pageId: targetId });
+              }}
+              onExternalLinkClick={handleExternalLink}
+            />
           </div>
         </div>
       )}
@@ -401,5 +428,14 @@ export default function LogseqApp() {
         <span>🎨 Bezel picker (bottom-left dot)</span>
       </div>
     </div>
+  );
+}
+
+/** Outer shell: provides BrowserProvider context before mounting the app */
+export default function LogseqApp() {
+  return (
+    <BrowserProvider>
+      <LogseqAppInner />
+    </BrowserProvider>
   );
 }

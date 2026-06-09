@@ -1,5 +1,6 @@
+import { useRef } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
-import { Sun, Moon, Monitor, Zap, Battery, Wifi, Volume2, Type, Palette } from 'lucide-react';
+import { Sun, Moon, Monitor, Zap, Battery, Wifi, Volume2, Type, Palette, Globe, Database } from 'lucide-react';
 
 export default function SettingsView() {
   const { state, dispatch } = useDatabase();
@@ -7,6 +8,54 @@ export default function SettingsView() {
 
   const update = (partial: Partial<typeof settings>) => {
     dispatch({ type: 'UPDATE_SETTINGS', settings: partial });
+  };
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleExport = async () => {
+    const vault = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      db: state.db,
+      favorites: state.favorites,
+      settings: state.settings,
+    };
+    const blob = new Blob([JSON.stringify(vault, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `voyager-vault-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImport = async (file: File) => {
+    try {
+      const text = await file.text();
+      const vault = JSON.parse(text);
+      if (!vault.version || !vault.db) throw new Error('Invalid vault file');
+      // Build a complete, clean DatabaseState from the vault — no stale runtime fields
+      dispatch({
+        type: 'HYDRATE',
+        state: {
+          db: vault.db,
+          favorites: vault.favorites || [],
+          settings: { ...state.settings, ...(vault.settings || {}) },
+          mediaAttachments: [],
+          audioNotes: [],
+          currentPageId: Object.keys(vault.db)[0] || '',
+          sidebarPageId: null,
+          activeView: 'editor' as const,
+          backlinksRaw: {},
+          dirtyPageIds: [],
+          reviews: {},
+        } as any,
+      });
+      alert('Vault restored! Reloading...');
+      window.location.reload();
+    } catch (e) {
+      alert('Import failed: ' + (e as Error).message);
+    }
   };
 
   const BEZEL_COLORS = [
@@ -170,6 +219,89 @@ export default function SettingsView() {
           {settings.customCSS && (
             <style>{settings.customCSS}</style>
           )}
+        </div>
+
+        {/* Browser Preferences */}
+        <div className="bg-slate-900 rounded-2xl p-3 border border-slate-800">
+          <div className="flex items-center gap-2 mb-3">
+            <Globe size={14} className="text-cyan-400" />
+            <span className="text-white text-sm font-semibold">Browser Preferences</span>
+          </div>
+          <div className="space-y-3">
+            <div>
+              <p className="text-slate-400 text-xs mb-1">Default Search Engine</p>
+              <input
+                type="text"
+                value={(settings as any).browserSearchEngine ?? 'https://duckduckgo.com/?q='}
+                onChange={e => update({ browserSearchEngine: e.target.value } as any)}
+                placeholder="https://duckduckgo.com/?q="
+                className="w-full bg-slate-800 text-slate-200 text-xs px-2 py-1.5 rounded-lg border border-slate-700 outline-none focus:border-indigo-500 transition-colors"
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-slate-400 text-xs">Save History</span>
+              <button
+                onClick={() => update({ browserSaveHistory: !((settings as any).browserSaveHistory ?? true) } as any)}
+                className={`w-10 h-5 rounded-full transition-colors ${
+                  ((settings as any).browserSaveHistory ?? true) ? 'bg-indigo-600' : 'bg-slate-700'
+                }`}
+              >
+                <div className={`w-4 h-4 rounded-full bg-white transition-transform m-0.5 ${
+                  ((settings as any).browserSaveHistory ?? true) ? 'translate-x-5' : ''
+                }`} />
+              </button>
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-slate-400 text-xs">Strict Sandbox</span>
+                <p className="text-slate-600 text-[10px] mt-0.5">Blocks scripts &amp; forms in embedded pages.</p>
+              </div>
+              <button
+                onClick={() => update({ browserStrictSandbox: !((settings as any).browserStrictSandbox ?? true) } as any)}
+                className={`w-10 h-5 rounded-full transition-colors ${
+                  ((settings as any).browserStrictSandbox ?? true) ? 'bg-indigo-600' : 'bg-slate-700'
+                }`}
+              >
+                <div className={`w-4 h-4 rounded-full bg-white transition-transform m-0.5 ${
+                  ((settings as any).browserStrictSandbox ?? true) ? 'translate-x-5' : ''
+                }`} />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Vault Backup */}
+        <div className="bg-slate-900 rounded-2xl p-3 border border-slate-800">
+          <div className="flex items-center gap-2 mb-3">
+            <Database size={14} className="text-emerald-400" />
+            <span className="text-white text-sm font-semibold">Vault Backup</span>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleExport}
+              className="flex-1 py-2 rounded-xl text-xs border border-indigo-500 text-indigo-300 hover:bg-indigo-600/10 transition-colors"
+            >
+              Export Vault
+            </button>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="flex-1 py-2 rounded-xl text-xs border border-slate-500 text-slate-300 hover:bg-slate-700/40 transition-colors"
+            >
+              Import Vault
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json"
+              className="hidden"
+              onChange={e => {
+                const file = e.target.files?.[0];
+                if (file) handleImport(file);
+                // Reset so the same file can be re-selected
+                e.target.value = '';
+              }}
+            />
+          </div>
         </div>
 
         {/* About */}

@@ -96,8 +96,8 @@ const TASK_DOTS: Record<string, string> = {
 };
 
 function BlockItem({
-  block, depth, pageId, onLinkClick
-}: { block: Block; depth: number; pageId: string; onLinkClick: (name: string, e: React.MouseEvent) => void }) {
+  block, depth, pageId, onLinkClick, onExternalLinkClick
+}: { block: Block; depth: number; pageId: string; onLinkClick: (name: string, e: React.MouseEvent) => void; onExternalLinkClick?: (url: string) => void }) {
   const { dispatch } = useDatabase();
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(block.content);
@@ -227,7 +227,7 @@ function BlockItem({
               onClick={e => { if (e.detail === 1) { /* single click for links */ } }}
               className="text-sm leading-relaxed cursor-text select-none"
             >
-              <MarkdownRenderer content={block.content} onLinkClick={onLinkClick} />
+              <MarkdownRenderer content={block.content} onLinkClick={onLinkClick} onExternalLinkClick={onExternalLinkClick} />
             </div>
           )}
         </div>
@@ -248,7 +248,7 @@ function BlockItem({
         <div className="pl-4 border-l border-slate-800/60 ml-3">
           {processBlocksForCodeFences(block.children).map(item =>
             item.type === 'block' ? (
-              <BlockItem key={item.block.id} block={item.block} depth={depth + 1} pageId={pageId} onLinkClick={onLinkClick} />
+              <BlockItem key={item.block.id} block={item.block} depth={depth + 1} pageId={pageId} onLinkClick={onLinkClick} onExternalLinkClick={onExternalLinkClick} />
             ) : (
               <div key={item.id} className="py-0.5 px-1 -mx-1" style={{ paddingLeft: (depth + 1) > 0 ? 16 : 0 }}>
                 <MarkdownRenderer content="" codeBlock={{ language: item.language, code: item.code }} />
@@ -261,7 +261,7 @@ function BlockItem({
   );
 }
 
-export default function LogseqEditor({ pageId, onLinkClick }: { pageId?: string; onLinkClick?: (pageId: string, e: React.MouseEvent) => void }) {
+export default function LogseqEditor({ pageId, onLinkClick, onExternalLinkClick }: { pageId?: string; onLinkClick?: (pageId: string, e: React.MouseEvent) => void; onExternalLinkClick?: (url: string) => void }) {
   const { state, dispatch, navigateTo, backlinks } = useDatabase();
   const [showFavStar, setShowFavStar] = useState(false);
   const activePageId = pageId || state.currentPageId;
@@ -339,7 +339,7 @@ export default function LogseqEditor({ pageId, onLinkClick }: { pageId?: string;
       <div className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
         {processBlocksForCodeFences(page.blocks).map(item =>
           item.type === 'block' ? (
-            <BlockItem key={item.block.id} block={item.block} depth={0} pageId={page.id} onLinkClick={handleLinkClick} />
+            <BlockItem key={item.block.id} block={item.block} depth={0} pageId={page.id} onLinkClick={handleLinkClick} onExternalLinkClick={onExternalLinkClick} />
           ) : (
             <div key={item.id} className="py-0.5 px-1 -mx-1">
               <MarkdownRenderer content="" codeBlock={{ language: item.language, code: item.code }} />

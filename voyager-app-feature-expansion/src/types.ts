@@ -104,6 +104,10 @@ export interface AppSettings {
   charging: boolean;
   lastOpenedPageId?: string | null;
   alwaysOpenJournal: boolean;
+  browserPersistHistory: boolean;
+  browserSandboxMode: 'strict' | 'compat';
+  browserSearchEngine: 'none' | 'duckduckgo' | 'google' | 'custom';
+  browserCustomSearchUrl?: string;
 }
 
 export interface SearchResult {
@@ -130,7 +134,7 @@ export interface WhiteboardElement {
   points?: { x: number; y: number }[];
 }
 
-export type ActiveView = 'editor' | 'graph' | 'flashcards' | 'search' | 'settings' | 'allPages' | 'todos' | 'media';
+export type ActiveView = 'editor' | 'graph' | 'flashcards' | 'search' | 'settings' | 'allPages' | 'todos' | 'media' | 'browser';
 
 export interface AudioNote {
   id: string;
@@ -162,4 +166,39 @@ export interface CardReview {
   nextReview: string;
   reviewCount: number;
 }
+
+export interface BrowserTab {
+  id: string;
+  url: string;
+  title?: string;
+  createdAt: string;
+  lastVisitedAt: string;
+}
+
+export interface BrowserHistoryEntry {
+  id: string;
+  url: string;
+  title?: string;
+  visitedAt: string;
+}
+
+export interface BrowserBookmark {
+  id: string;
+  url: string;
+  title?: string;
+  createdAt: string;
+  tags?: string[];
+  note?: string;
+}
+
+export interface WebClip {
+  id: string;
+  url: string;
+  title?: string;
+  excerpt?: string;
+  createdAt: string;
+  pageId?: string;
+  blockId?: string;
+}
+
 
