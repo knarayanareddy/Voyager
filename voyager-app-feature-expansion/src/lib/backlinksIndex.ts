@@ -9,7 +9,7 @@
  */
 
 import { Page } from '../types';
-import { extractRefs } from '../mockData';
+import { extractRefs } from './parsing';
 
 export type BacklinksIndex = Map<string, Set<string>>;
 
@@ -19,8 +19,7 @@ function refsFromPage(page: Page): Set<string> {
   function walk(blocks: Page['blocks']): void {
     for (const b of blocks) {
       for (const r of extractRefs(b.content)) {
-        // Normalise to page-id style
-        refs.add(r.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''));
+        refs.add(r);
       }
       if (b.children.length) walk(b.children);
     }

@@ -44,8 +44,8 @@ export default function MediaStudio() {
 
       {/* Tab Content */}
       <div className="flex-1 overflow-hidden relative flex flex-col">
-        {activeTab === 'camera' && <CameraView screenOn={true} actions={actions} />}
-        {activeTab === 'audio' && <AudioRecorder screenOn={true} actions={actions} />}
+        {activeTab === 'camera' && <CameraView screenOn={true} actions={actions} currentPageId={state.currentPageId} />}
+        {activeTab === 'audio' && <AudioRecorder screenOn={true} actions={actions} currentPageId={state.currentPageId} />}
         {activeTab === 'gallery' && <GalleryView state={state} actions={actions} />}
       </div>
     </div>

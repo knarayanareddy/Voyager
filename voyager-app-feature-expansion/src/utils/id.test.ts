@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { genUUID, genMediaId, genAudioId } from './id';
+import {
+  genUUID,
+  genMediaId,
+  genAudioId,
+  genPageId,
+  genBlockId,
+  genReviewId
+} from './id';
 
 describe('genUUID', () => {
   it('returns a valid UUID v4 format', () => {
@@ -17,11 +24,20 @@ describe('genUUID', () => {
 });
 
 describe('prefixed ID helpers', () => {
-  it('genMediaId starts with media_', () => {
-    expect(genMediaId()).toMatch(/^media_/);
+  const cases: [string, () => string][] = [
+    ['media_', genMediaId],
+    ['audio_', genAudioId],
+    ['page_',  genPageId],
+    ['block_', genBlockId],
+    ['review_', genReviewId],
+  ];
+
+  it.each(cases)('%s helper produces correct prefix', (prefix, fn) => {
+    expect(fn()).toMatch(new RegExp(`^${prefix}`));
   });
 
-  it('genAudioId starts with audio_', () => {
-    expect(genAudioId()).toMatch(/^audio_/);
+  it('all helpers produce unique values across 1000 calls', () => {
+    const ids = Array.from({ length: 1000 }, genMediaId);
+    expect(new Set(ids).size).toBe(1000);
   });
 });

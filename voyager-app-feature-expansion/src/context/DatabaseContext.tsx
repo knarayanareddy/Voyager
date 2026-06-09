@@ -14,11 +14,11 @@ import {
   buildInitialAudioNotes,
   DEFAULT_SETTINGS,
   getTodayJournalId,
-  extractRefs,
   genId
 } from '../mockData';
+import { extractRefs } from '../lib/parsing';
 import { genUUID, genMediaId } from '../utils/id';
-import { dbService, initStorage } from '../utils/db';
+import { dbService, initStorage, revokeMediaUrl } from '../utils/db';
 import {
   buildBacklinksIndex,
   BacklinksIndex,
@@ -45,7 +45,12 @@ export interface DatabaseState {
 }
 
 export interface DatabaseActions {
-  addMedia: (blob: Blob, type: MediaAttachment['type'], name: string) => Promise<MediaAttachment>;
+  addMedia: (
+    blob: Blob,
+    type: MediaAttachment['type'],
+    name: string,
+    ownerPageId?: string
+  ) => Promise<MediaAttachment>;
   deleteMedia: (mediaId: string) => Promise<void>;
   addAudioNote: (note: AudioNote, blob?: Blob) => Promise<void>;
   deleteAudioNote: (noteId: string) => Promise<void>;
@@ -550,17 +555,12 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
         // Create mutable copies so we never mutate IndexedDB objects in-place
         const mutablePagesMap: Record<string, Page> = {};
         for (const [id, page] of Object.entries(pagesMap)) {
-          mutablePagesMap[id] = { ...page, mediaAttachments: [...(page.mediaAttachments || [])] };
+          mutablePagesMap[id] = { ...page, mediaAttachments: [] };
         }
 
         storedMedia.forEach(media => {
           if (media.ownerPageId && mutablePagesMap[media.ownerPageId]) {
-            if (!mutablePagesMap[media.ownerPageId].mediaAttachments) {
-              mutablePagesMap[media.ownerPageId].mediaAttachments = [];
-            }
-            if (!mutablePagesMap[media.ownerPageId].mediaAttachments!.some(m => m.id === media.id)) {
-              mutablePagesMap[media.ownerPageId].mediaAttachments!.push(media);
-            }
+            mutablePagesMap[media.ownerPageId].mediaAttachments!.push(media);
           }
         });
 
@@ -695,13 +695,31 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
     [state.db],
   );
 
-  const addMedia = useCallback(async (blob: Blob, type: MediaAttachment['type'], name: string) => {
+  const addMedia = useCallback(async (
+    blob: Blob,
+    type: MediaAttachment['type'],
+    name: string,
+    ownerPageId?: string
+  ): Promise<MediaAttachment> => {
     const mediaId = genMediaId();
-    const pageId = state.currentPageId;
+    const resolvedPageId = ownerPageId || state.currentPageId;
+    const objectUrl = URL.createObjectURL(blob);
+
+    const metadata: Omit<MediaAttachment, 'url'> = {
+      id: mediaId,
+      type,
+      name,
+      size: blob.size,
+      mimeType: blob.type,
+      createdAt: new Date().toISOString(),
+      ownerPageId: resolvedPageId
+    };
+
     try {
-      const metadata = await dbService.saveMedia(mediaId, blob, type, name, pageId);
-      dispatch({ type: 'ADD_MEDIA', pageId, media: metadata });
-      return metadata;
+      await dbService.saveMedia(blob, metadata);
+      const attachment: MediaAttachment = { ...metadata, url: objectUrl };
+      dispatch({ type: 'ADD_MEDIA', pageId: resolvedPageId, media: attachment });
+      return attachment;
     } catch (error) {
       console.error('Failed to save media:', error);
       throw error;
@@ -711,12 +729,16 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
   const deleteMedia = useCallback(async (mediaId: string) => {
     const pageId = state.currentPageId;
     try {
+      const existing = state.mediaAttachments.find(m => m.id === mediaId);
+      if (existing?.url) {
+        revokeMediaUrl(existing.url);
+      }
       await dbService.deleteMedia(mediaId);
       dispatch({ type: 'DELETE_MEDIA', pageId, mediaId });
     } catch (error) {
       console.error('Failed to delete media:', error);
     }
-  }, [state.currentPageId]);
+  }, [state.currentPageId, state.mediaAttachments]);
 
   const addAudioNote = useCallback(async (note: AudioNote, blob?: Blob) => {
     try {

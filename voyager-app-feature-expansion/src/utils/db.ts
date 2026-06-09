@@ -71,6 +71,23 @@ export class VoyagerDB {
     return transaction.objectStore(name);
   }
 
+  /**
+   * Opens a single IDBTransaction spanning multiple stores.
+   * All reads/writes within the returned stores share the same
+   * transaction and commit atomically.
+   */
+  private getMultiStoreTransaction(
+    storeNames: string[],
+    mode: IDBTransactionMode
+  ): { tx: IDBTransaction; stores: Record<string, IDBObjectStore> } {
+    const tx = this.db!.transaction(storeNames, mode);
+    const stores: Record<string, IDBObjectStore> = {};
+    for (const name of storeNames) {
+      stores[name] = tx.objectStore(name);
+    }
+    return { tx, stores };
+  }
+
   // --- Pages Storage ---
   async savePage(page: Page): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -166,37 +183,22 @@ export class VoyagerDB {
   }
 
   // --- Media Storage (Binary Blobs) ---
-  async saveMedia(id: string, blob: Blob, type: 'image' | 'audio' | 'video' | 'drawing', name: string, ownerPageId?: string): Promise<MediaAttachment> {
+  async saveMedia(
+    blob: Blob,
+    metadata: Omit<MediaAttachment, 'url'>
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
-      try {
-        if (!this.db) throw new Error('Database not initialized');
-        const transaction = this.db.transaction(['media_blobs', 'media_metadata'], 'readwrite');
-        
-        const metadata: MediaAttachment = {
-          id,
-          name,
-          type,
-          url: '', // Do not persist real URL, it is session bound
-          createdAt: new Date().toISOString(),
-          size: blob.size,
-          ownerPageId
-        };
+      const { tx, stores } = this.getMultiStoreTransaction(
+        ['media_blobs', 'media_metadata'],
+        'readwrite'
+      );
 
-        transaction.oncomplete = () => {
-          // Rehydrate the object URL after successful save
-          metadata.url = createMediaUrl(blob);
-          resolve(metadata);
-        };
-        transaction.onerror = () => reject(transaction.error);
+      tx.oncomplete = () => resolve();
+      tx.onerror   = () => reject(tx.error);
+      tx.onabort   = () => reject(new Error('saveMedia transaction aborted'));
 
-        const blobStore = transaction.objectStore('media_blobs');
-        const metaStore = transaction.objectStore('media_metadata');
-
-        blobStore.put(blob, id);
-        metaStore.put(metadata);
-      } catch (err) {
-        reject(err);
-      }
+      stores['media_blobs'].put({ id: metadata.id, blob }, metadata.id);
+      stores['media_metadata'].put(metadata); // no url field — see Issue #7
     });
   }
 
@@ -205,7 +207,14 @@ export class VoyagerDB {
       try {
         const store = this.getStore('media_blobs', 'readonly');
         const request = store.get(id);
-        request.onsuccess = () => resolve(request.result || null);
+        request.onsuccess = () => {
+          const res = request.result;
+          if (res && typeof res === 'object' && 'blob' in res) {
+            resolve((res as any).blob || null);
+          } else {
+            resolve((res as Blob) || null);
+          }
+        };
         request.onerror = () => reject(request.error);
       } catch (err) {
         reject(err);
@@ -215,21 +224,17 @@ export class VoyagerDB {
 
   async deleteMedia(id: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      try {
-        if (!this.db) throw new Error('Database not initialized');
-        const transaction = this.db.transaction(['media_blobs', 'media_metadata'], 'readwrite');
-        
-        transaction.oncomplete = () => resolve();
-        transaction.onerror = () => reject(transaction.error);
+      const { tx, stores } = this.getMultiStoreTransaction(
+        ['media_blobs', 'media_metadata'],
+        'readwrite'
+      );
 
-        const blobStore = transaction.objectStore('media_blobs');
-        const metaStore = transaction.objectStore('media_metadata');
+      tx.oncomplete = () => resolve();
+      tx.onerror   = () => reject(tx.error);
+      tx.onabort   = () => reject(new Error('deleteMedia transaction aborted'));
 
-        blobStore.delete(id);
-        metaStore.delete(id);
-      } catch (err) {
-        reject(err);
-      }
+      stores['media_blobs'].delete(id);
+      stores['media_metadata'].delete(id);
     });
   }
 
@@ -250,8 +255,8 @@ export class VoyagerDB {
     for (const item of metadataList) {
       const blob = await this.getMediaBlob(item.id);
       if (blob) {
-        item.url = createMediaUrl(blob);
-        rehydrated.push(item);
+        const objectUrl = createMediaUrl(blob);
+        rehydrated.push({ ...item, url: objectUrl });
       }
     }
     return rehydrated;

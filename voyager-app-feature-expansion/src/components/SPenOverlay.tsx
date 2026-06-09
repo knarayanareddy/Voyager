@@ -107,7 +107,7 @@ export default function SPenOverlay({ onClose }: Props) {
     canvas.toBlob(async (blob) => {
       if (!blob) return;
       try {
-        const metadata = await actions.addMedia(blob, 'drawing', 'SPen_Drawing.png');
+        const metadata = await actions.addMedia(blob, 'drawing', 'SPen_Drawing.png', pageId);
         if (lastBlock) {
           dispatch({
             type: 'UPDATE_BLOCK',

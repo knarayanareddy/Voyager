@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Mic, Square, Play, Pause, Trash2, Sparkles, FileAudio, Check } from 'lucide-react';
 import { DatabaseActions } from '../../context/DatabaseContext';
 import { genAudioId } from '../../utils/id';
@@ -6,9 +6,10 @@ import { genAudioId } from '../../utils/id';
 interface AudioRecorderProps {
   screenOn: boolean;
   actions: DatabaseActions;
+  currentPageId: string;
 }
 
-export const AudioRecorder: React.FC<AudioRecorderProps> = ({ screenOn, actions }) => {
+export const AudioRecorder: React.FC<AudioRecorderProps> = ({ screenOn, actions, currentPageId }) => {
   const [recording, setRecording] = useState(false);
   const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
@@ -152,13 +153,14 @@ export const AudioRecorder: React.FC<AudioRecorderProps> = ({ screenOn, actions 
         createdAt: new Date().toISOString(),
         waveform: waveform,
         cropStart: 0,
-        cropEnd: seconds
+        cropEnd: seconds,
+        pageId: currentPageId
       },
       playbackBlob
     );
 
     // Also add to media attachments so it shows up in media tab
-    await actions.addMedia(playbackBlob, 'audio', name);
+    await actions.addMedia(playbackBlob, 'audio', name, currentPageId);
 
     // Reset
     setPlaybackUrl('');

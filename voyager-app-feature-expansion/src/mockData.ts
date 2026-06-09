@@ -1,5 +1,6 @@
 import { Page, Block, AppSettings, AudioNote } from './types';
 import { format, subDays } from 'date-fns';
+import { extractRefs } from './lib/parsing';
 
 let blockIdCounter = 1000;
 
@@ -25,20 +26,6 @@ function makeBlock(content: string, children: Block[] = [], taskStatus: Block['t
     properties: {},
     refs: extractRefs(content),
   };
-}
-
-export function extractRefs(content: string): string[] {
-  const refs: string[] = [];
-  
-  const cleanContent = content
-    .replace(/```[\s\S]*?```/g, '')
-    .replace(/`[^`]*`/g, '');
-
-  const wikiLinks = cleanContent.match(/\[\[([^\]]+)\]\]/g);
-  if (wikiLinks) { wikiLinks.forEach(link => { refs.push(link.slice(2, -2)); }); }
-  const tags = cleanContent.match(/#(\w[\w-]*)/g);
-  if (tags) { tags.forEach(tag => refs.push(tag.slice(1))); }
-  return refs;
 }
 
 function journalPage(daysAgo: number): Page {

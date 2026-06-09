@@ -7,9 +7,10 @@ import { DatabaseActions } from '../../context/DatabaseContext';
 interface CameraViewProps {
   screenOn: boolean;
   actions: DatabaseActions;
+  currentPageId: string;
 }
 
-export const CameraView: React.FC<CameraViewProps> = ({ screenOn, actions }) => {
+export const CameraView: React.FC<CameraViewProps> = ({ screenOn, actions, currentPageId }) => {
   const { stream, error, startCamera, stopCamera } = useCamera(screenOn);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null); // Base64 preview
@@ -118,7 +119,7 @@ export const CameraView: React.FC<CameraViewProps> = ({ screenOn, actions }) => 
       canvas.toBlob(async (finalBlob) => {
         if (finalBlob) {
           const name = `Camera Photo ${new Date().toLocaleTimeString()}`;
-          await actions.addMedia(finalBlob, 'image', name);
+          await actions.addMedia(finalBlob, 'image', name, currentPageId);
           
           // Reset
           setCapturedPhoto(null);

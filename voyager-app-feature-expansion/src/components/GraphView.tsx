@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { GraphNode, GraphEdge, Page, Block } from '../types';
 import { Pause, Play, Tag, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
-import { extractRefs } from '../mockData';
+import { extractRefs } from '../lib/parsing';
 
 export function extractEdgesFromPage(
   page: Pick<Page, 'blocks'>,
@@ -13,7 +13,17 @@ export function extractEdgesFromPage(
   function walkBlocks(blocks: Pick<Block, 'content' | 'children'>[]) {
     for (const block of blocks) {
       for (const ref of extractRefs(block.content)) {
-        const targetId = pageIdByName.get(ref.toLowerCase());
+        let targetId = pageIdByName.get(ref);
+        if (!targetId) {
+          // Fallback: test maps or old index maps might use lowercased names with spaces (e.g. 'project alpha')
+          for (const [key, val] of pageIdByName.entries()) {
+            const normalizedKey = key.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+            if (normalizedKey === ref) {
+              targetId = val;
+              break;
+            }
+          }
+        }
         if (targetId) refs.add(targetId);
       }
       if (block.children?.length) walkBlocks(block.children);
