@@ -41,6 +41,7 @@ export interface DatabaseState {
   // Serialised backlinks index (Map is not JSON-safe for direct state storage)
   backlinksRaw: Record<string, string[]>;
   dirtyPageIds: string[];
+  reviews: Record<string, import('../types').CardReview>;
 }
 
 // ─── Action union ────────────────────────────────────────────────────────────
@@ -67,6 +68,7 @@ export type Action =
   | { type: 'UPDATE_AUDIO_NOTE'; note: AudioNote }
   | { type: 'DELETE_AUDIO_NOTE'; noteId: string }
   | { type: 'SET_ACTIVE_VIEW'; view: ActiveView }
+  | { type: 'SAVE_REVIEW'; review: import('../types').CardReview }
   | { type: 'HYDRATE'; state: DatabaseState }
   | { type: 'CLEAR_DIRTY_PAGES'; pageIds: string[] };
 
@@ -179,8 +181,18 @@ function baseReducer(state: DatabaseState, action: Action): DatabaseState {
         settings: { ...state.settings, lastOpenPageId: action.pageId }
       };
 
-    case 'SET_ACTIVE_VIEW':
+    case 'SET_ACTIVE_VIEW': {
       return { ...state, activeView: action.view };
+    }
+    case 'SAVE_REVIEW': {
+      return {
+        ...state,
+        reviews: {
+          ...state.reviews,
+          [action.review.id]: action.review
+        }
+      };
+    }
 
     case 'UPDATE_BLOCK': {
       const page = state.db[action.pageId];
@@ -465,6 +477,7 @@ function buildFreshState(): DatabaseState {
     mediaAttachments: [],
     backlinksRaw: serialiseBacklinks(buildBacklinksIndex(db)),
     dirtyPageIds: [],
+    reviews: {},
   };
 }
 
@@ -493,6 +506,7 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
   const prevSettingsRef = useRef<AppSettings | null>(null);
   const prevFavoritesRef = useRef<string[]>([]);
   const prevAudioRef = useRef<AudioNote[]>([]);
+  const prevReviewsRef = useRef<Record<string, import('../types').CardReview>>({});
 
   // ── Hydrate from IndexedDB on mount ──────────────────────────────────────
   useEffect(() => {
@@ -510,6 +524,7 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
         const storedAudio = await dbService.getAllAudioNotes();
         const storedMedia = await dbService.getAllMedia();
         const storedPages = await dbService.getAllPages();
+        const storedReviews = await dbService.getAllReviews();
 
         const pagesMap: Record<string, Page> = {};
         if (storedPages.length === 0) {
@@ -546,9 +561,12 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
 
         const initialPageId = storedSettings.lastOpenPageId || getTodayJournalId();
 
+        const reviewsMap: Record<string, import('../types').CardReview> = {};
+        storedReviews.forEach(r => reviewsMap[r.id] = r);
+
         const hydratedState: DatabaseState = {
           db: mutablePagesMap,
-          currentPageId: initialPageId,
+          currentPageId: mutablePagesMap[initialPageId] ? initialPageId : getTodayJournalId(),
           sidebarPageId: null,
           favorites: storedFavorites.length > 0 ? storedFavorites : ['project-voyager', 'media-studio'],
           settings: storedSettings,
@@ -557,6 +575,7 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
           mediaAttachments: storedMedia,
           backlinksRaw: initialBacklinksRaw,
           dirtyPageIds: [],
+          reviews: reviewsMap,
         };
 
         dispatch({ type: 'HYDRATE', state: hydratedState });
@@ -618,6 +637,17 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
         }
       });
       prevAudioRef.current = state.audioNotes;
+    }
+
+    // 5. Sync reviews
+    if (state.reviews !== prevReviewsRef.current) {
+      Object.values(state.reviews).forEach(review => {
+        const prevReview = prevReviewsRef.current[review.id];
+        if (review !== prevReview) {
+          dbService.saveReview(review);
+        }
+      });
+      prevReviewsRef.current = state.reviews;
     }
     };
 

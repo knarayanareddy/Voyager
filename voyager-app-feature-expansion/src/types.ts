@@ -156,5 +156,9 @@ export interface CardReview {
   cardId: string;
   score: number;
   reviewedAt: string;
+  easeFactor: number;
+  interval: number;
+  nextReview: string;
+  reviewCount: number;
 }
 

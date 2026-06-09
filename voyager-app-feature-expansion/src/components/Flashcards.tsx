@@ -34,41 +34,93 @@ const RATINGS = [
 ];
 
 export default function Flashcards() {
-  const { state } = useDatabase();
+  const { state, dispatch } = useDatabase();
   const [cards, setCards] = useState<FlashCard[]>([]);
   const [index, setIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [done, setDone] = useState(false);
   const [scores, setScores] = useState<Record<string, number>>({});
+  const [started, setStarted] = useState(false);
+
+  const startSession = () => {
+    const dueCards: FlashCard[] = [];
+    const now = new Date();
+    Object.values(state.db).forEach(page => {
+      extractCards(page.blocks, page.id).forEach(c => {
+        const review = state.reviews[c.id];
+        if (review) {
+          c.easeFactor = review.easeFactor ?? c.easeFactor;
+          c.interval = review.interval ?? c.interval;
+          c.nextReview = review.nextReview ?? c.nextReview;
+          c.reviewCount = review.reviewCount ?? c.reviewCount;
+        }
+        if (new Date(c.nextReview) <= now) {
+          dueCards.push(c);
+        }
+      });
+    });
+    setCards(dueCards.sort(() => Math.random() - 0.5));
+    setIndex(0); setFlipped(false); setDone(false); setScores({});
+    setStarted(true);
+  };
 
   useEffect(() => {
-    const allCards: FlashCard[] = [];
-    Object.values(state.db).forEach(page => {
-      allCards.push(...extractCards(page.blocks, page.id));
-    });
-    setCards(allCards.sort(() => Math.random() - 0.5));
-    setIndex(0); setFlipped(false); setDone(false); setScores({});
-  }, [state.db]);
+    startSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const current = cards[index];
 
   const rate = (score: number) => {
     setScores(s => ({ ...s, [current.id]: score }));
+    
+    // SM-2 Algorithm
+    let { easeFactor, interval, reviewCount } = current;
+    easeFactor = Math.max(1.3, easeFactor + 0.1 - (5 - score) * (0.08 + (5 - score) * 0.02));
+    
+    if (score < 3) {
+      reviewCount = 0;
+      interval = 1;
+    } else {
+      if (reviewCount === 0) interval = 1;
+      else if (reviewCount === 1) interval = 6;
+      else interval = Math.round(interval * easeFactor);
+      reviewCount++;
+    }
+    
+    const nextDate = new Date();
+    nextDate.setDate(nextDate.getDate() + interval);
+    
+    dispatch({
+      type: 'SAVE_REVIEW',
+      review: {
+        id: current.id,
+        cardId: current.id,
+        score,
+        reviewedAt: new Date().toISOString(),
+        easeFactor,
+        interval,
+        nextReview: nextDate.toISOString(),
+        reviewCount
+      }
+    });
+
     if (index + 1 >= cards.length) setDone(true);
     else { setIndex(i => i + 1); setFlipped(false); }
   };
 
   const restart = () => {
-    setCards(c => [...c].sort(() => Math.random() - 0.5));
-    setIndex(0); setFlipped(false); setDone(false); setScores({});
+    startSession();
   };
+
+  if (!started) return null;
 
   if (cards.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full p-6 text-center">
-        <div className="text-5xl mb-4">🃏</div>
-        <h3 className="text-white font-semibold mb-2">No Flashcards Yet</h3>
-        <p className="text-slate-400 text-sm">Add <code className="bg-slate-800 px-1 rounded text-indigo-300">#card</code> to any block to create a flashcard</p>
+        <div className="text-5xl mb-4">🎉</div>
+        <h3 className="text-white font-semibold mb-2">You're all caught up!</h3>
+        <p className="text-slate-400 text-sm">No flashcards are due for review right now.</p>
       </div>
     );
   }
