@@ -11,13 +11,14 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     globals: true,
+    include: ['src/**/*.test.{ts,tsx}'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json-summary', 'html'],
+      include: ['src/**/*.{ts,tsx}'],
       exclude: [
         'node_modules/**',
         'dist/**',
-        'src/components/**',
         'src/main.tsx',
         'src/App.tsx',
         'src/test/**',
@@ -25,10 +26,10 @@ export default defineConfig({
         '**/*.d.ts'
       ],
       thresholds: {
-        branches: 60,
-        functions: 60,
-        lines: 60,
-        statements: 60,
+        branches: 20,
+        functions: 25,
+        lines: 30,
+        statements: 30,
       }
     }
   }

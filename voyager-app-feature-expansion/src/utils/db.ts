@@ -322,6 +322,30 @@ export class VoyagerDB {
     return rehydrated;
   }
 
+  async reassignMediaOwner(oldPageId: string, newPageId: string): Promise<number> {
+    const { tx, stores } = this.getMultiStoreTransaction(['media_metadata'], 'readwrite');
+    const store = stores['media_metadata'];
+    const index = store.index('ownerPageId');
+
+    const items = await new Promise<MediaAttachment[]>((resolve, reject) => {
+      const request = index.getAll(oldPageId);
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
+
+    for (const item of items) {
+      store.put({ ...item, ownerPageId: newPageId });
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+
+    return items.length;
+  }
+
+
   // --- Graph Layout Storage ---
   async saveGraphLayout(
     layoutId: string,
@@ -356,6 +380,21 @@ export class VoyagerDB {
       }
     });
   }
+
+  async migrateGraphLayoutNodeId(
+    layoutId: string,
+    oldId: string,
+    newId: string
+  ): Promise<void> {
+    const positions = await this.getGraphLayout(layoutId);
+    if (positions && positions[oldId]) {
+      const updated = { ...positions };
+      updated[newId] = updated[oldId];
+      delete updated[oldId];
+      await this.saveGraphLayout(layoutId, updated);
+    }
+  }
+
 
   // --- Audio Notes Storage ---
   async saveAudioNote(note: AudioNote, blob?: Blob): Promise<void> {

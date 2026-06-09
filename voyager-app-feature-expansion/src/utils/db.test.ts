@@ -137,4 +137,49 @@ describe('VoyagerDB migrations and CRUD operations', () => {
 
     expect(indexExists).toBe(true);
   });
+
+  it('should reassign media owners successfully', async () => {
+    await db.init();
+    const mockBlob = new Blob(['hello media'], { type: 'image/png' });
+    const metadata = {
+      id: 'media-test-reassign',
+      type: 'image' as const,
+      name: 'test.png',
+      createdAt: new Date().toISOString(),
+      ownerPageId: 'page-old',
+    };
+
+    await db.saveMedia(mockBlob, metadata);
+
+    const count = await db.reassignMediaOwner('page-old', 'page-new');
+    expect(count).toBe(1);
+
+    const mediaForOld = await db.getMediaForPage('page-old');
+    expect(mediaForOld).toHaveLength(0);
+
+    const mediaForNew = await db.getMediaForPage('page-new');
+    expect(mediaForNew).toHaveLength(1);
+    expect(mediaForNew[0].id).toBe('media-test-reassign');
+    expect(mediaForNew[0].ownerPageId).toBe('page-new');
+  });
+
+  it('should migrate graph layout node IDs successfully', async () => {
+    await db.init();
+    const layoutId = 'global';
+    const positions = {
+      'node-old': { x: 50, y: 100 },
+      'node-other': { x: 10, y: 20 },
+    };
+
+    await db.saveGraphLayout(layoutId, positions);
+
+    await db.migrateGraphLayoutNodeId(layoutId, 'node-old', 'node-new');
+
+    const retrieved = await db.getGraphLayout(layoutId);
+    expect(retrieved).toBeDefined();
+    expect(retrieved?.['node-new']).toEqual({ x: 50, y: 100 });
+    expect(retrieved?.['node-old']).toBeUndefined();
+    expect(retrieved?.['node-other']).toEqual({ x: 10, y: 20 });
+  });
 });
+

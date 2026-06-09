@@ -180,24 +180,45 @@ const TASK_CYCLE: Block['taskStatus'][] = ['TODO', 'DOING', 'DONE', 'LATER', 'NO
 // ─── Reducer ─────────────────────────────────────────────────────────────────
 
 function rewriteBlockRefs(blocks: Block[], oldName: string, newName: string): Block[] {
-  return blocks.map(b => {
+  let changed = false;
+  const nextBlocks = blocks.map(b => {
     const newContent = rewriteRefs(b.content, oldName, newName);
-    const updatedBlock: Block = {
-      ...b,
-      content: newContent,
-      refs: extractRefs(newContent),
-    };
+    const contentChanged = newContent !== b.content;
+
+    let newChildren = b.children || [];
     if (b.children && b.children.length > 0) {
-      updatedBlock.children = rewriteBlockRefs(b.children, oldName, newName);
+      newChildren = rewriteBlockRefs(b.children, oldName, newName);
     }
-    return updatedBlock;
+    const childrenChanged = newChildren !== b.children;
+
+    if (contentChanged || childrenChanged) {
+      changed = true;
+      return {
+        ...b,
+        content: newContent,
+        refs: contentChanged ? extractRefs(newContent) : b.refs,
+        children: newChildren,
+      };
+    }
+    return b;
   });
+  return changed ? nextBlocks : blocks;
 }
+
 
 function baseReducer(state: DatabaseState, action: Action): DatabaseState {
   switch (action.type) {
     case 'HYDRATE':
+      // Revoke any existing object URLs to prevent leaks
+      if (state.mediaAttachments) {
+        state.mediaAttachments.forEach(m => {
+          if (m.url) {
+            revokeMediaUrl(m.url);
+          }
+        });
+      }
       return action.state;
+
 
     case 'CLEAR_DIRTY_PAGES':
       return {
@@ -230,23 +251,34 @@ function baseReducer(state: DatabaseState, action: Action): DatabaseState {
           // The page itself
           const updatedBlocks = rewriteBlockRefs(page.blocks, oldPage.name, trimmedNewName);
           if (updatedBlocks.length > 0 && updatedBlocks[0].content.toLowerCase().startsWith(`# ${oldPage.name.toLowerCase()}`)) {
-            updatedBlocks[0] = {
-              ...updatedBlocks[0],
+            const modifiedBlocks = [...updatedBlocks];
+            modifiedBlocks[0] = {
+              ...modifiedBlocks[0],
               content: `# ${trimmedNewName}`,
               refs: extractRefs(`# ${trimmedNewName}`),
             };
+            newDb[newPageId] = {
+              ...page,
+              id: newPageId,
+              name: trimmedNewName,
+              blocks: modifiedBlocks,
+              mediaAttachments: (page.mediaAttachments || []).map(m => ({ ...m, ownerPageId: newPageId })),
+              updatedAt: new Date().toISOString(),
+            };
+          } else {
+            newDb[newPageId] = {
+              ...page,
+              id: newPageId,
+              name: trimmedNewName,
+              blocks: updatedBlocks,
+              mediaAttachments: (page.mediaAttachments || []).map(m => ({ ...m, ownerPageId: newPageId })),
+              updatedAt: new Date().toISOString(),
+            };
           }
-          newDb[newPageId] = {
-            ...page,
-            id: newPageId,
-            name: trimmedNewName,
-            blocks: updatedBlocks,
-            updatedAt: new Date().toISOString(),
-          };
         } else {
           // Other pages
           const updatedBlocks = rewriteBlockRefs(page.blocks, oldPage.name, trimmedNewName);
-          const blockChanged = JSON.stringify(updatedBlocks) !== JSON.stringify(page.blocks);
+          const blockChanged = updatedBlocks !== page.blocks;
           
           if (blockChanged) {
             newDb[id] = {
@@ -276,6 +308,11 @@ function baseReducer(state: DatabaseState, action: Action): DatabaseState {
       // Rebuild the backlinks index from scratch
       const nextBacklinksRaw = serialiseBacklinks(buildBacklinksIndex(newDb));
 
+      // Update in-memory media attachments ownerPageId
+      const nextMediaAttachments = (state.mediaAttachments || []).map(m =>
+        m.ownerPageId === pageId ? { ...m, ownerPageId: newPageId } : m
+      );
+
       return {
         ...state,
         db: newDb,
@@ -283,8 +320,10 @@ function baseReducer(state: DatabaseState, action: Action): DatabaseState {
         sidebarPageId: nextSidebarPageId,
         favorites: nextFavorites,
         backlinksRaw: nextBacklinksRaw,
+        mediaAttachments: nextMediaAttachments,
       };
     }
+
 
     case 'NAVIGATE':
       return { 
@@ -923,8 +962,26 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const renamePage = useCallback((pageId: string, newName: string) => {
+    const trimmedNewName = newName.trim();
+    const newPageId = trimmedNewName
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9-]/g, '');
+
+    const oldPageExists = !!state.db[pageId];
+
     dispatch({ type: 'RENAME_PAGE', pageId, newName });
-  }, []);
+
+    if (oldPageExists && newPageId !== pageId) {
+      void dbService.reassignMediaOwner(pageId, newPageId).catch(err => {
+        console.error('[DatabaseContext] reassignMediaOwner failed:', err);
+      });
+      void dbService.migrateGraphLayoutNodeId('global', pageId, newPageId).catch(err => {
+        console.error('[DatabaseContext] migrateGraphLayoutNodeId failed:', err);
+      });
+    }
+  }, [dispatch, state.db]);
+
 
   const actions = useMemo(() => ({
     addMedia,

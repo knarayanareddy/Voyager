@@ -105,7 +105,7 @@ export default function S23UltraFrame({ children, onSPenClick }: Props) {
           onClick={onSPenClick}
           className="absolute rounded-full active:scale-95 transition-transform cursor-pointer group"
           title="S-Pen — Click to activate Air Command"
-          style={{ width: 6, height: 28, bottom: 20, right: 16, background: 'linear-gradient(180deg, rgba(129,140,248,0.6), rgba(99,102,241,0.4))', boxShadow: '0 2px 8px rgba(99,102,241,0.4)', borderRadius: 3 }}
+          style={{ width: 6, height: 28, bottom: 20, right: 16, background: 'linear-gradient(180deg, rgba(129,140,248,0.6), rgba(99,102,241,0.4))', boxShadow: '0 2px 8px rgba(99,102,241,0.4)', borderRadius: 3, zIndex: 40 }}
         >
           <span className="absolute -top-5 -left-8 text-[8px] font-bold opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap" style={{ color: '#818cf8' }}>✏️ S-Pen</span>
         </button>

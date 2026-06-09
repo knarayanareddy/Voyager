@@ -97,14 +97,30 @@ describe('MarkdownRenderer', () => {
     expect(img?.getAttribute('src')).toBe('https://example.com/img.png');
   });
 
+  it('renders inline code using code tag', () => {
+    const { container } = renderWithContext(
+      <MarkdownRenderer content="Here is `code` ok" />
+    );
+    const code = container.querySelector('code');
+    expect(code).not.toBeNull();
+    expect(code?.textContent).toBe('code');
+    expect(container.textContent).toContain('Here is code ok');
+  });
+
   it('does not render wikilinks inside inline code as clickable', () => {
-    const { queryByRole } = renderWithContext(<MarkdownRenderer content="`[[Not A Link]]`" />);
+    const { queryByRole, container } = renderWithContext(<MarkdownRenderer content="`[[Not A Link]]`" />);
     expect(queryByRole('button', { name: /Not A Link/i })).toBeNull();
+    const code = container.querySelector('code');
+    expect(code).not.toBeNull();
+    expect(code?.textContent).toBe('[[Not A Link]]');
   });
 
   it('still renders wikilinks outside code as clickable', () => {
-    const { getByRole, queryByRole } = renderWithContext(<MarkdownRenderer content="[[Real Link]] and `[[Fake]]`" />);
+    const { getByRole, queryByRole, container } = renderWithContext(<MarkdownRenderer content="[[Real Link]] and `[[Fake]]`" />);
     expect(getByRole('button', { name: /Real Link/i })).toBeDefined();
     expect(queryByRole('button', { name: /Fake/i })).toBeNull();
+    const code = container.querySelector('code');
+    expect(code).not.toBeNull();
+    expect(code?.textContent).toBe('[[Fake]]');
   });
 });

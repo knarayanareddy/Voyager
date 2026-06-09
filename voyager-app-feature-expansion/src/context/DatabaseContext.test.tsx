@@ -4,6 +4,8 @@ import { render, act } from '@testing-library/react';
 import { useEffect } from 'react';
 import { DatabaseProvider, useDatabase } from './DatabaseContext';
 import 'fake-indexeddb/auto';
+import { dbService } from '../utils/db';
+
 
 function TestComponent({ onReady }: { onReady: (dbInfo: any) => void }) {
   const context = useDatabase();
@@ -363,4 +365,113 @@ describe('DatabaseContext - RENAME_PAGE action', () => {
 
     expect(context.state.audioNotes).toHaveLength(0);
   });
+
+  it('renamePage reassigns media ownerPageId and graph layout positions in the DB, surviving reload', async () => {
+    let context: any = null;
+
+    const { unmount } = render(
+      <DatabaseProvider>
+        <TestComponent onReady={(info) => { context = info; }} />
+      </DatabaseProvider>
+    );
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    // 1. Create page and add media to it
+    await act(async () => {
+      context.dispatch({ type: 'CREATE_PAGE', name: 'Original Page', navigate: true });
+    });
+
+    const mockBlob = new Blob(['attachment'], { type: 'image/png' });
+    await act(async () => {
+      await context.actions.addMedia(mockBlob, 'image', 'picture.png', 'original-page');
+    });
+
+    // 2. Set graph layout positions for the original page
+    await act(async () => {
+      await dbService.saveGraphLayout('global', {
+        'original-page': { x: 120, y: 350 },
+        'other-page': { x: 10, y: 20 }
+      });
+    });
+
+    // 3. Rename the page
+    await act(async () => {
+      context.actions.renamePage('original-page', 'New Page');
+    });
+
+    // Verify in-memory state updated
+    expect(context.state.db['original-page']).toBeUndefined();
+    expect(context.state.db['new-page']).toBeDefined();
+    expect(context.state.mediaAttachments).toHaveLength(1);
+    expect(context.state.mediaAttachments[0].ownerPageId).toBe('new-page');
+
+    // Unmount to trigger reload / rehydrate simulation
+    unmount();
+
+    // 4. Mount again to load from database
+    let context2: any = null;
+    render(
+      <DatabaseProvider>
+        <TestComponent onReady={(info) => { context2 = info; }} />
+      </DatabaseProvider>
+    );
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    // Verify reload restored page rename, media assignment, and layout positions
+    expect(context2.state.db['new-page']).toBeDefined();
+    expect(context2.state.mediaAttachments).toHaveLength(1);
+    expect(context2.state.mediaAttachments[0].ownerPageId).toBe('new-page');
+
+    const layout = await dbService.getGraphLayout('global');
+    expect(layout).toBeDefined();
+    expect(layout?.['new-page']).toEqual({ x: 120, y: 350 });
+    expect(layout?.['original-page']).toBeUndefined();
+    expect(layout?.['other-page']).toEqual({ x: 10, y: 20 });
+  });
+
+  it('keeps reference equality for block arrays and objects when no references are rewritten (structural sharing)', async () => {
+    let context: any = null;
+
+    render(
+      <DatabaseProvider>
+        <TestComponent onReady={(info) => { context = info; }} />
+      </DatabaseProvider>
+    );
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    // Create page A
+    await act(async () => {
+      context.dispatch({ type: 'CREATE_PAGE', name: 'Page A', navigate: true });
+    });
+
+    // Create page B
+    await act(async () => {
+      context.dispatch({ type: 'CREATE_PAGE', name: 'Page B', navigate: false });
+    });
+
+    const pageBBefore = context.state.db['page-b'];
+    expect(pageBBefore).toBeDefined();
+
+    // Rename Page A -> Page C. Page B does not contain any references to Page A.
+    await act(async () => {
+      context.actions.renamePage('page-a', 'Page C');
+    });
+
+    const pageBAfter = context.state.db['page-b'];
+    expect(pageBAfter).toBeDefined();
+
+    // Structural sharing check: the page B blocks array reference and page object reference should remain exactly the same!
+    expect(pageBAfter).toBe(pageBBefore);
+    expect(pageBAfter.blocks).toBe(pageBBefore.blocks);
+  });
 });
+

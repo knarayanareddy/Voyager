@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
 import { GraphNode, GraphEdge, Page, Block } from '../types';
 import { Pause, Play, Tag, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
@@ -79,8 +79,9 @@ export default function GraphView() {
 
   // Build graph from DB and restore layout
   const [layoutLoaded, setLayoutLoaded] = useState(false);
-  const layoutId = useMemo(() => Object.keys(state.db).sort().join(','), [state.db]);
+  const layoutId = 'global';
   const lastSavedPositionsRef = useRef<string>('');
+
 
   useEffect(() => {
     let active = true;
@@ -288,16 +289,24 @@ export default function GraphView() {
 
     // Save layout on stabilization
     if (maxSpeed < 0.1 && layoutLoaded) {
-      const positions: Record<string, { x: number; y: number }> = {};
-      updated.forEach(n => {
-        positions[n.id] = { x: Math.round(n.x), y: Math.round(n.y) };
-      });
-      const positionsStr = JSON.stringify(positions);
-      if (positionsStr !== lastSavedPositionsRef.current) {
-        lastSavedPositionsRef.current = positionsStr;
-        dbService.saveGraphLayout(layoutId, positions);
+      const signature = updated
+        .slice()
+        .sort((a, b) => a.id.localeCompare(b.id))
+        .map(n => `${n.id}:${Math.round(n.x)}:${Math.round(n.y)}`)
+        .join('|');
+
+      if (signature !== lastSavedPositionsRef.current) {
+        lastSavedPositionsRef.current = signature;
+        const positions: Record<string, { x: number; y: number }> = {};
+        updated.forEach(n => {
+          positions[n.id] = { x: Math.round(n.x), y: Math.round(n.y) };
+        });
+        void dbService.saveGraphLayout(layoutId, positions).catch((err) => {
+          console.warn('[GraphView] failed to save layout', err);
+        });
       }
     }
+
 
     drawCanvas();
     animRef.current = requestAnimationFrame(() => tickRef.current());

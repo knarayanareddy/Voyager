@@ -1,6 +1,5 @@
 import React, { useMemo } from 'react';
 import { useDatabase } from '../context/DatabaseContext';
-import { stripCodeFences } from '../lib/parsing';
 
 interface Props {
   content: string;
@@ -15,11 +14,33 @@ export default function MarkdownRenderer({ content, onLinkClick, className = '',
   const mediaById = useMemo(() => new Map(state.mediaAttachments.map(m => [m.id, m])), [state.mediaAttachments]);
 
   const renderInline = (text: string): React.ReactNode[] => {
-    const cleanText = stripCodeFences(text);
     const parts: React.ReactNode[] = [];
-    let remaining = text;
-    let remainingClean = cleanText;
     let key = 0;
+
+    // 1. Tokenize into code spans and text spans
+    const segments: { type: 'code' | 'text'; content: string }[] = [];
+    let lastIndex = 0;
+    const inlineCodeRegex = /`([^`]+)`/g;
+    let match;
+    while ((match = inlineCodeRegex.exec(text)) !== null) {
+      if (match.index > lastIndex) {
+        segments.push({
+          type: 'text',
+          content: text.slice(lastIndex, match.index)
+        });
+      }
+      segments.push({
+        type: 'code',
+        content: match[1]
+      });
+      lastIndex = inlineCodeRegex.lastIndex;
+    }
+    if (lastIndex < text.length) {
+      segments.push({
+        type: 'text',
+        content: text.slice(lastIndex)
+      });
+    }
 
     const patterns: [RegExp, (match: string, ...groups: string[]) => React.ReactNode][] = [
       [/!\[([^\]]*)\]\(([^)]+)\)/g, (_match, alt, url) => {
@@ -59,36 +80,52 @@ export default function MarkdownRenderer({ content, onLinkClick, className = '',
       [/\*([^*]+)\*/g, (_, p1) => <em key={key++} className="italic text-slate-300">{p1}</em>],
       [/~~([^~]+)~~/g, (_, p1) => <del key={key++} className="line-through text-slate-500">{p1}</del>],
       [/==([^=]+)==/g, (_, p1) => <mark key={key++} className="bg-yellow-400/30 text-yellow-200 px-0.5 rounded">{p1}</mark>],
-      [/`([^`]+)`/g, (_, p1) => <code key={key++} className="bg-slate-700 text-emerald-300 px-1 py-0.5 rounded text-[0.85em] font-mono">{p1}</code>],
     ];
 
-    // Merge all patterns and process them in order of first occurrence
-    while (remaining.length > 0) {
-      let earliest = -1;
-      let earliestMatch: RegExpExecArray | null = null;
-      let earliestRenderer: ((match: string, ...groups: string[]) => React.ReactNode) | null = null;
+    const renderTextSegment = (segmentText: string): React.ReactNode[] => {
+      const segmentParts: React.ReactNode[] = [];
+      let remaining = segmentText;
 
-      for (const [pattern, renderer] of patterns) {
-        pattern.lastIndex = 0;
-        const m = pattern.exec(remainingClean);
-        if (m && (earliest === -1 || m.index < earliest)) {
-          earliest = m.index;
-          earliestMatch = m;
-          earliestRenderer = renderer;
+      while (remaining.length > 0) {
+        let earliest = -1;
+        let earliestMatch: RegExpExecArray | null = null;
+        let earliestRenderer: ((match: string, ...groups: string[]) => React.ReactNode) | null = null;
+
+        for (const [pattern, renderer] of patterns) {
+          pattern.lastIndex = 0;
+          const m = pattern.exec(remaining);
+          if (m && (earliest === -1 || m.index < earliest)) {
+            earliest = m.index;
+            earliestMatch = m;
+            earliestRenderer = renderer;
+          }
         }
-      }
 
-      if (earliest === -1 || !earliestMatch || !earliestRenderer) {
-        parts.push(<span key={key++}>{remaining}</span>);
-        break;
-      }
+        if (earliest === -1 || !earliestMatch || !earliestRenderer) {
+          segmentParts.push(<span key={key++}>{remaining}</span>);
+          break;
+        }
 
-      if (earliest > 0) {
-        parts.push(<span key={key++}>{remaining.slice(0, earliest)}</span>);
+        if (earliest > 0) {
+          segmentParts.push(<span key={key++}>{remaining.slice(0, earliest)}</span>);
+        }
+        segmentParts.push(earliestRenderer(earliestMatch[0], ...earliestMatch.slice(1)));
+        remaining = remaining.slice(earliest + earliestMatch[0].length);
       }
-      parts.push(earliestRenderer(earliestMatch[0], ...earliestMatch.slice(1)));
-      remaining = remaining.slice(earliest + earliestMatch[0].length);
-      remainingClean = remainingClean.slice(earliest + earliestMatch[0].length);
+      return segmentParts;
+    };
+
+    // 2. Process segments
+    for (const segment of segments) {
+      if (segment.type === 'code') {
+        parts.push(
+          <code key={key++} className="bg-slate-700 text-emerald-300 px-1 py-0.5 rounded text-[0.85em] font-mono">
+            {segment.content}
+          </code>
+        );
+      } else {
+        parts.push(...renderTextSegment(segment.content));
+      }
     }
 
     return parts;
