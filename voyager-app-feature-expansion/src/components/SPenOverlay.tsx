@@ -114,7 +114,7 @@ export default function SPenOverlay({ onClose }: Props) {
             type: 'UPDATE_BLOCK',
             pageId,
             blockId: lastBlock.id,
-            content: lastBlock.content + `\n![S-Pen Drawing](${mediaId})`,
+            content: lastBlock.content + `\n![S-Pen Drawing](voyager://media/${mediaId})`,
           });
         }
       } catch (err) {

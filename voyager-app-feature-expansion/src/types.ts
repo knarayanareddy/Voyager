@@ -28,6 +28,7 @@ export interface MediaAttachment {
   width?: number;
   height?: number;
   mimeType?: string;
+  ownerPageId?: string;
 }
 
 export interface Page {
@@ -101,6 +102,7 @@ export interface AppSettings {
   navMode: 'buttons' | 'gesture';
   batteryLevel: number;
   charging: boolean;
+  lastOpenPageId?: string;
 }
 
 export interface SearchResult {

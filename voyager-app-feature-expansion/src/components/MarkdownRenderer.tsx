@@ -19,8 +19,12 @@ export default function MarkdownRenderer({ content, onLinkClick, className = '',
 
     const patterns: [RegExp, (match: string, ...groups: string[]) => React.ReactNode][] = [
       [/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, url) => {
-        const media = state?.mediaAttachments?.find(m => m.id === url);
-        const resolvedUrl = media ? media.url : url;
+        let resolvedUrl = url;
+        if (url.startsWith('voyager://media/')) {
+          const id = url.replace('voyager://media/', '');
+          const media = state?.mediaAttachments?.find(m => m.id === id);
+          resolvedUrl = media ? media.url : url;
+        }
         return (
           <img
             key={key++}

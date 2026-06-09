@@ -166,42 +166,38 @@ export class VoyagerDB {
   }
 
   // --- Media Storage (Binary Blobs) ---
-  async saveMedia(id: string, blob: Blob, type: 'image' | 'audio' | 'video' | 'drawing', name: string): Promise<MediaAttachment> {
-    // 1. Save blob to media_blobs
-    await new Promise<void>((resolve, reject) => {
+  async saveMedia(id: string, blob: Blob, type: 'image' | 'audio' | 'video' | 'drawing', name: string, ownerPageId?: string): Promise<MediaAttachment> {
+    return new Promise((resolve, reject) => {
       try {
-        const store = this.getStore('media_blobs', 'readwrite');
-        const request = store.put(blob, id);
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
+        if (!this.db) throw new Error('Database not initialized');
+        const transaction = this.db.transaction(['media_blobs', 'media_metadata'], 'readwrite');
+        
+        const metadata: MediaAttachment = {
+          id,
+          name,
+          type,
+          url: '', // Do not persist real URL, it is session bound
+          createdAt: new Date().toISOString(),
+          size: blob.size,
+          ownerPageId
+        };
+
+        transaction.oncomplete = () => {
+          // Rehydrate the object URL after successful save
+          metadata.url = createMediaUrl(blob);
+          resolve(metadata);
+        };
+        transaction.onerror = () => reject(transaction.error);
+
+        const blobStore = transaction.objectStore('media_blobs');
+        const metaStore = transaction.objectStore('media_metadata');
+
+        blobStore.put(blob, id);
+        metaStore.put(metadata);
       } catch (err) {
         reject(err);
       }
     });
-
-    // 2. Save metadata to media_metadata
-    const objectUrl = createMediaUrl(blob);
-    const metadata: MediaAttachment = {
-      id,
-      name,
-      type,
-      url: objectUrl, // This will be dynamic, but we store it
-      createdAt: new Date().toISOString(),
-      size: blob.size
-    };
-
-    await new Promise<void>((resolve, reject) => {
-      try {
-        const store = this.getStore('media_metadata', 'readwrite');
-        const request = store.put(metadata);
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
-      } catch (err) {
-        reject(err);
-      }
-    });
-
-    return metadata;
   }
 
   async getMediaBlob(id: string): Promise<Blob | null> {
@@ -218,25 +214,19 @@ export class VoyagerDB {
   }
 
   async deleteMedia(id: string): Promise<void> {
-    // Delete blob
-    await new Promise<void>((resolve, reject) => {
+    return new Promise((resolve, reject) => {
       try {
-        const store = this.getStore('media_blobs', 'readwrite');
-        const request = store.delete(id);
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
-      } catch (err) {
-        reject(err);
-      }
-    });
+        if (!this.db) throw new Error('Database not initialized');
+        const transaction = this.db.transaction(['media_blobs', 'media_metadata'], 'readwrite');
+        
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
 
-    // Delete metadata
-    await new Promise<void>((resolve, reject) => {
-      try {
-        const store = this.getStore('media_metadata', 'readwrite');
-        const request = store.delete(id);
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
+        const blobStore = transaction.objectStore('media_blobs');
+        const metaStore = transaction.objectStore('media_metadata');
+
+        blobStore.delete(id);
+        metaStore.delete(id);
       } catch (err) {
         reject(err);
       }

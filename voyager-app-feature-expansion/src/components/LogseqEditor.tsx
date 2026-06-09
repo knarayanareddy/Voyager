@@ -289,7 +289,7 @@ export default function LogseqEditor({ pageId, onLinkClick }: { pageId?: string;
   const isFav = state.favorites.includes(page.id);
 
   // Compute backlinks
-  const backlinkPageIds = page ? backlinks.get(page.name) : undefined;
+  const backlinkPageIds = page ? backlinks.get(page.id) : undefined;
   const backlinkPages = backlinkPageIds
     ? Array.from(backlinkPageIds).map(id => state.db[id]).filter(Boolean)
     : [];

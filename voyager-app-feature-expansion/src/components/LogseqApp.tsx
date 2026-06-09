@@ -19,14 +19,30 @@ function SearchOverlay({ onClose }: { onClose: () => void }) {
   const { state, navigateTo } = useDatabase();
   const [query, setQuery] = useState('');
 
-  const results = query.length > 1
-    ? Object.values(state.db).flatMap(page =>
-        page.blocks
-          .filter(b => b.content.toLowerCase().includes(query.toLowerCase()))
-          .slice(0, 2)
-          .map(b => ({ pageId: page.id, pageName: page.name, blockId: b.id, content: b.content, isJournal: page.isJournal }))
-      ).slice(0, 10)
-    : [];
+  const allBlocks = useMemo(() => {
+    const list = [];
+    const traverse = (blocks: any[], page: any) => {
+      for (const b of blocks) {
+        list.push({ pageId: page.id, pageName: page.name, blockId: b.id, content: b.content, isJournal: page.isJournal });
+        if (b.children.length) traverse(b.children, page);
+      }
+    };
+    Object.values(state.db).forEach(page => traverse(page.blocks, page));
+    return list;
+  }, [state.db]);
+
+  const results = useMemo(() => {
+    if (query.length < 2) return [];
+    const lower = query.toLowerCase();
+    const matches = [];
+    for (let i = 0; i < allBlocks.length; i++) {
+      if (allBlocks[i].content.toLowerCase().includes(lower)) {
+        matches.push(allBlocks[i]);
+        if (matches.length >= 15) break;
+      }
+    }
+    return matches;
+  }, [query, allBlocks]);
 
   return (
     <div className="absolute inset-0 z-40 bg-slate-950 flex flex-col">

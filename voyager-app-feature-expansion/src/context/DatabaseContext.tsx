@@ -40,6 +40,7 @@ export interface DatabaseState {
   mediaAttachments: MediaAttachment[];
   // Serialised backlinks index (Map is not JSON-safe for direct state storage)
   backlinksRaw: Record<string, string[]>;
+  dirtyPageIds: string[];
 }
 
 // ─── Action union ────────────────────────────────────────────────────────────
@@ -66,7 +67,8 @@ export type Action =
   | { type: 'UPDATE_AUDIO_NOTE'; note: AudioNote }
   | { type: 'DELETE_AUDIO_NOTE'; noteId: string }
   | { type: 'SET_ACTIVE_VIEW'; view: ActiveView }
-  | { type: 'HYDRATE'; state: DatabaseState };
+  | { type: 'HYDRATE'; state: DatabaseState }
+  | { type: 'CLEAR_DIRTY_PAGES'; pageIds: string[] };
 
 // ─── Block tree helpers ───────────────────────────────────────────────────────
 
@@ -159,13 +161,23 @@ const TASK_CYCLE: Block['taskStatus'][] = ['TODO', 'DOING', 'DONE', 'LATER', 'NO
 
 // ─── Reducer ─────────────────────────────────────────────────────────────────
 
-function reducer(state: DatabaseState, action: Action): DatabaseState {
+function baseReducer(state: DatabaseState, action: Action): DatabaseState {
   switch (action.type) {
     case 'HYDRATE':
       return action.state;
 
+    case 'CLEAR_DIRTY_PAGES':
+      return {
+        ...state,
+        dirtyPageIds: state.dirtyPageIds.filter(id => !action.pageIds.includes(id))
+      };
+
     case 'NAVIGATE':
-      return { ...state, currentPageId: action.pageId };
+      return { 
+        ...state, 
+        currentPageId: action.pageId,
+        settings: { ...state.settings, lastOpenPageId: action.pageId }
+      };
 
     case 'SET_ACTIVE_VIEW':
       return { ...state, activeView: action.view };
@@ -412,6 +424,32 @@ function reducer(state: DatabaseState, action: Action): DatabaseState {
   }
 }
 
+function reducer(state: DatabaseState, action: Action): DatabaseState {
+  const nextState = baseReducer(state, action);
+  
+  if (action.type !== 'CLEAR_DIRTY_PAGES' && action.type !== 'HYDRATE' && nextState.db !== state.db) {
+    const changedIds = new Set<string>(nextState.dirtyPageIds || []);
+    
+    // Add modified or new pages
+    for (const id in nextState.db) {
+      if (nextState.db[id] !== state.db[id]) {
+        changedIds.add(id);
+      }
+    }
+    
+    // Add deleted pages
+    for (const id in state.db) {
+      if (!nextState.db[id]) {
+        changedIds.add(id);
+      }
+    }
+    
+    return { ...nextState, dirtyPageIds: Array.from(changedIds) };
+  }
+  
+  return nextState;
+}
+
 // ─── Initial state factory ────────────────────────────────────────────────────
 
 function buildFreshState(): DatabaseState {
@@ -426,6 +464,7 @@ function buildFreshState(): DatabaseState {
     activeView: 'editor',
     mediaAttachments: [],
     backlinksRaw: serialiseBacklinks(buildBacklinksIndex(db)),
+    dirtyPageIds: [],
   };
 }
 
@@ -493,21 +532,23 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
         }
 
         storedMedia.forEach(media => {
-          // Find which page owns this media (page ID prefix matches or traverse)
-          Object.values(mutablePagesMap).forEach(page => {
-            if (page.blocks.some(b => b.content.includes(media.id))) {
-              if (!page.mediaAttachments.some(m => m.id === media.id)) {
-                page.mediaAttachments.push(media);
-              }
+          if (media.ownerPageId && mutablePagesMap[media.ownerPageId]) {
+            if (!mutablePagesMap[media.ownerPageId].mediaAttachments) {
+              mutablePagesMap[media.ownerPageId].mediaAttachments = [];
             }
-          });
+            if (!mutablePagesMap[media.ownerPageId].mediaAttachments.some(m => m.id === media.id)) {
+              mutablePagesMap[media.ownerPageId].mediaAttachments.push(media);
+            }
+          }
         });
 
         const initialBacklinksRaw = serialiseBacklinks(buildBacklinksIndex(mutablePagesMap));
 
+        const initialPageId = storedSettings.lastOpenPageId || getTodayJournalId();
+
         const hydratedState: DatabaseState = {
           db: mutablePagesMap,
-          currentPageId: getTodayJournalId(),
+          currentPageId: initialPageId,
           sidebarPageId: null,
           favorites: storedFavorites.length > 0 ? storedFavorites : ['project-voyager', 'media-studio'],
           settings: storedSettings,
@@ -515,6 +556,7 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
           activeView: 'editor',
           mediaAttachments: storedMedia,
           backlinksRaw: initialBacklinksRaw,
+          dirtyPageIds: [],
         };
 
         dispatch({ type: 'HYDRATE', state: hydratedState });
@@ -533,23 +575,24 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!hydratedRef.current) return;
 
-    // 1. Sync pages incrementally
-    Object.keys(state.db).forEach(id => {
-      const page = state.db[id];
-      const prevPage = prevDbRef.current[id];
-      if (page !== prevPage) {
-        dbService.savePage(page);
+    const performSave = async () => {
+      // 1. Sync pages incrementally using the dirty queue (O(k))
+      if (state.dirtyPageIds.length > 0) {
+        const pagesToSave = [...state.dirtyPageIds];
+        dispatch({ type: 'CLEAR_DIRTY_PAGES', pageIds: pagesToSave });
+        
+        // Sequentially write to avoid unbounded concurrent IDB writes
+        for (const id of pagesToSave) {
+          const page = state.db[id];
+          if (page) {
+            await dbService.savePage(page);
+          } else {
+            await dbService.deletePage(id);
+          }
+        }
       }
-    });
-    // Handle page deletions
-    Object.keys(prevDbRef.current).forEach(id => {
-      if (!state.db[id]) {
-        dbService.deletePage(id);
-      }
-    });
-    prevDbRef.current = state.db;
 
-    // 2. Sync settings
+      // 2. Sync settings
     if (state.settings !== prevSettingsRef.current) {
       dbService.saveSettings(state.settings);
       prevSettingsRef.current = state.settings;
@@ -576,6 +619,9 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
       });
       prevAudioRef.current = state.audioNotes;
     }
+    };
+
+    performSave();
   }, [state]);
 
   // ── Derived backlinks index ───────────────────────────────────────────────
@@ -616,7 +662,7 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
     const mediaId = `media-${Date.now()}`;
     const pageId = state.currentPageId;
     try {
-      const metadata = await dbService.saveMedia(mediaId, blob, type, name);
+      const metadata = await dbService.saveMedia(mediaId, blob, type, name, pageId);
       dispatch({ type: 'ADD_MEDIA', pageId, media: metadata });
       return metadata;
     } catch (error) {
