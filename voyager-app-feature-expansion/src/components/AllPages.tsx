@@ -56,7 +56,7 @@ export default function AllPages() {
     setValidationError(null);
   };
 
-  const handleRenameCommit = (pageId: string) => {
+  const handleRenameCommit = async (pageId: string) => {
     const error = validateName(editName, pageId);
     if (error) {
       handleRenameCancel();
@@ -64,7 +64,7 @@ export default function AllPages() {
     }
     const trimmed = editName.trim();
     if (trimmed && trimmed !== state.db[pageId]?.name) {
-      actions.renamePage(pageId, trimmed);
+      await actions.renamePage(pageId, trimmed);
     }
     setEditingPageId(null);
   };

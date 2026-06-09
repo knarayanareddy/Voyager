@@ -25,6 +25,7 @@ export default defineConfig({
         '**/*.test.*',
         '**/*.d.ts'
       ],
+      // Baseline established on Sprint 4.1; increase +5% per sprint until 80%.
       thresholds: {
         branches: 20,
         functions: 25,

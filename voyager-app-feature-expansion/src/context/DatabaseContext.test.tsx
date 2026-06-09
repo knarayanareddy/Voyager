@@ -72,7 +72,7 @@ describe('DatabaseContext - RENAME_PAGE action', () => {
 
     // 3. Perform rename: Project Alpha -> Project Omega
     await act(async () => {
-      context.actions.renamePage('project-alpha', 'Project Omega');
+      await context.actions.renamePage('project-alpha', 'Project Omega');
     });
 
     // 4. Verify rename results
@@ -399,7 +399,7 @@ describe('DatabaseContext - RENAME_PAGE action', () => {
 
     // 3. Rename the page
     await act(async () => {
-      context.actions.renamePage('original-page', 'New Page');
+      await context.actions.renamePage('original-page', 'New Page');
     });
 
     // Verify in-memory state updated
@@ -463,7 +463,7 @@ describe('DatabaseContext - RENAME_PAGE action', () => {
 
     // Rename Page A -> Page C. Page B does not contain any references to Page A.
     await act(async () => {
-      context.actions.renamePage('page-a', 'Page C');
+      await context.actions.renamePage('page-a', 'Page C');
     });
 
     const pageBAfter = context.state.db['page-b'];

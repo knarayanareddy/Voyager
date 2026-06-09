@@ -56,7 +56,7 @@ export interface DatabaseActions {
   addAudioNote: (note: AudioNote, blob?: Blob) => Promise<void>;
   deleteAudioNote: (noteId: string) => Promise<void>;
   updateAudioNote: (note: AudioNote) => Promise<void>;
-  renamePage: (pageId: string, newName: string) => void;
+  renamePage: (pageId: string, newName: string) => Promise<void>;
 }
 
 // ─── Action union ────────────────────────────────────────────────────────────
@@ -961,7 +961,7 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const renamePage = useCallback((pageId: string, newName: string) => {
+  const renamePage = useCallback(async (pageId: string, newName: string) => {
     const trimmedNewName = newName.trim();
     const newPageId = trimmedNewName
       .toLowerCase()
@@ -970,16 +970,20 @@ export function DatabaseProvider({ children }: { children: React.ReactNode }) {
 
     const oldPageExists = !!state.db[pageId];
 
-    dispatch({ type: 'RENAME_PAGE', pageId, newName });
-
     if (oldPageExists && newPageId !== pageId) {
-      void dbService.reassignMediaOwner(pageId, newPageId).catch(err => {
-        console.error('[DatabaseContext] reassignMediaOwner failed:', err);
-      });
-      void dbService.migrateGraphLayoutNodeId('global', pageId, newPageId).catch(err => {
-        console.error('[DatabaseContext] migrateGraphLayoutNodeId failed:', err);
-      });
+      try {
+        await dbService.reassignMediaOwner(pageId, newPageId);
+      } catch (err) {
+        console.warn('[DatabaseContext] reassignMediaOwner failed:', err);
+      }
+      try {
+        await dbService.migrateGraphLayoutNodeId('global', pageId, newPageId);
+      } catch (err) {
+        console.warn('[DatabaseContext] migrateGraphLayoutNodeId failed:', err);
+      }
     }
+
+    dispatch({ type: 'RENAME_PAGE', pageId, newName });
   }, [dispatch, state.db]);
 
 
